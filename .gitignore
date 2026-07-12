@@ -4,6 +4,11 @@ data/*.csv
 data/progress_checkpoint.json
 # 清洗后的大文件（超过100MB）
 data/data_clean/cleaned_data/*.csv
+
+# 缓存文件和处理后的数据文件
+*.pkl
+data/data_engineer/daily_data/dataset_loader/cache/
+data/data_engineer/daily_data/processed_data/*.csv
 # Python相关
 __pycache__/
 *.py[cod]
