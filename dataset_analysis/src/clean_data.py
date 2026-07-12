@@ -305,13 +305,27 @@ def clean_data(
         if col not in df.columns:
             continue
         series = df[col].dropna()
-        Q1 = series.quantile(0.01)
-        Q3 = series.quantile(0.99)
-        before_outliers = ((series < Q1) | (series > Q3)).sum()
-        df[col] = df[col].clip(lower=Q1, upper=Q3)
+        Q1 = series.quantile(0.25)
+        Q3 = series.quantile(0.75)
+
+        if outlier_method == "iqr":
+            # IQR方法: Q1 - 1.5*IQR ~ Q3 + 1.5*IQR
+            iqr_val = Q3 - Q1
+            lower_bound = Q1 - 1.5 * iqr_val
+            upper_bound = Q3 + 1.5 * iqr_val
+        elif outlier_method == "percentile":
+            # 百分位法: 1%~99%
+            lower_bound = series.quantile(0.01)
+            upper_bound = series.quantile(0.99)
+        else:
+            raise ValueError(f"不支持的异常值处理方法: {outlier_method}，可选 'iqr' 或 'percentile'")
+
+        before_outliers = ((series < lower_bound) | (series > upper_bound)).sum()
+        df[col] = df[col].clip(lower=lower_bound, upper=upper_bound)
         outlier_report[col] = {
-            "lower_bound": round(Q1, 4),
-            "upper_bound": round(Q3, 4),
+            "method": outlier_method,
+            "lower_bound": round(lower_bound, 4),
+            "upper_bound": round(upper_bound, 4),
             "clipped": before_outliers,
         }
     report["outlier_winsorize"] = outlier_report
