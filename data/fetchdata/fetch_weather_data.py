@@ -91,87 +91,49 @@ CITIES = {
     "Luxembourg": {"latitude": 49.6116, "longitude": 6.1319, "country": "Luxembourg"}
 }
 
-# 时间范围 - 25年（2000-2024）
-START_DATE = "2000-01-01"
+# 时间范围 - 10年（2015-2024）
+START_DATE = "2015-01-01"
 END_DATE = "2024-12-31"
 
-# 大幅扩展天气变量 - 38个小时级变量
+# 精简天气变量配置（减少API负担）
 HOURLY_VARIABLES = [
     # 温度相关
     "temperature_2m",
     "apparent_temperature",
-    "dew_point_2m",
     
     # 湿度和气压
     "relative_humidity_2m",
     "pressure_msl",
-    "surface_pressure",
-    "vapour_pressure_deficit",
     
     # 降水
     "precipitation",
     "rain",
     "snowfall",
-    "snow_depth",
     
     # 云量
     "cloud_cover",
-    "cloud_cover_low",
-    "cloud_cover_mid",
-    "cloud_cover_high",
     
     # 风
     "wind_speed_10m",
-    "wind_speed_100m",
     "wind_direction_10m",
-    "wind_direction_100m",
     "wind_gusts_10m",
     
     # 太阳辐射
     "shortwave_radiation",
-    "direct_radiation",
-    "direct_normal_irradiance",
-    "diffuse_radiation",
-    "sunshine_duration",
-    
-    # 土壤温度
-    "soil_temperature_0_to_7cm",
-    "soil_temperature_7_to_28cm",
-    "soil_temperature_28_to_100cm",
-    "soil_temperature_100_to_255cm",
-    
-    # 土壤湿度
-    "soil_moisture_0_to_7cm",
-    "soil_moisture_7_to_28cm",
-    "soil_moisture_28_to_100cm",
-    "soil_moisture_100_to_255cm",
     
     # 其他
-    "et0_fao_evapotranspiration",
     "weather_code"
 ]
 
-# 每日聚合数据 - 19个变量
+# 每日聚合数据
 DAILY_VARIABLES = [
     "temperature_2m_max",
     "temperature_2m_min",
     "temperature_2m_mean",
-    "apparent_temperature_max",
-    "apparent_temperature_min",
-    "apparent_temperature_mean",
     "precipitation_sum",
     "rain_sum",
-    "snowfall_sum",
-    "precipitation_hours",
-    "sunrise",
-    "sunset",
-    "sunshine_duration",
-    "daylight_duration",
     "wind_speed_10m_max",
-    "wind_gusts_10m_max",
-    "wind_direction_10m_dominant",
-    "shortwave_radiation_sum",
-    "et0_fao_evapotranspiration"
+    "shortwave_radiation_sum"
 ]
 
 # API配置
@@ -181,9 +143,9 @@ BASE_URL = "https://archive-api.open-meteo.com/v1/archive"
 OUTPUT_DIR = "../"  # 输出到data目录
 
 # 请求配置 - 避免429错误
-REQUEST_DELAY = 3  # 每次请求间隔3秒（重要！）
-MAX_RETRIES = 5  # 最大重试次数
-RETRY_DELAY = 15  # 重试间隔15秒
+REQUEST_DELAY = 20  # 每次请求间隔20秒（大幅增加！）
+MAX_RETRIES = 3  # 最大重试次数
+RETRY_DELAY = 60  # 重试间隔60秒（增加！）
 TIMEOUT = 120  # 请求超时时间
 
 
@@ -280,16 +242,16 @@ def load_checkpoint(checkpoint_file):
 
 def main():
     """
-    主函数: 获取所有城市数据并保存为CSV
+    主函数: 获取所有城市数据，每个城市立即保存
     """
     print("=" * 80)
     print("欧洲城市天气数据获取工具 - 增强版")
     print("=" * 80)
-    print(f"时间范围: {START_DATE} 到 {END_DATE} (25年)")
+    print(f"时间范围: {START_DATE} 到 {END_DATE} (10年)")
     print(f"城市数量: {len(CITIES)} 个欧洲主要城市")
     print(f"小时级变量: {len(HOURLY_VARIABLES)} 个")
     print(f"每日级变量: {len(DAILY_VARIABLES)} 个")
-    print(f"预计数据量: ~1GB")
+    print(f"保存方式: 每个城市独立保存CSV文件")
     print(f"请求间隔: {REQUEST_DELAY} 秒（避免429错误）")
     print("=" * 80)
     print()
@@ -305,15 +267,16 @@ def main():
         print(f"📌 检测到断点续传：已完成 {len(completed_cities)} 个城市")
         print()
     
-    hourly_data_list = []
-    daily_data_list = []
     start_time = datetime.now()
+    success_count = 0
+    fail_count = 0
     
     # 遍历所有城市
     for i, (city_name, city_info) in enumerate(CITIES.items(), 1):
         # 跳过已完成的城市
         if city_name in completed_cities:
             print(f"[{i}/{len(CITIES)}] ⏭ {city_name} 已完成，跳过")
+            success_count += 1
             continue
         
         print(f"[{i}/{len(CITIES)}] ", end="")
@@ -325,14 +288,28 @@ def main():
             city_info["country"]
         )
         
-        if hourly_df is not None:
-            hourly_data_list.append(hourly_df)
-        if daily_df is not None:
-            daily_data_list.append(daily_df)
-        
-        # 标记为已完成
-        completed_cities.add(city_name)
-        save_checkpoint(completed_cities, checkpoint_file)
+        # 立即保存该城市的数据
+        if hourly_df is not None or daily_df is not None:
+            # 保存hourly数据
+            if hourly_df is not None:
+                hourly_file = os.path.join(OUTPUT_DIR, f"weather_hourly_{city_name}_{START_DATE}_to_{END_DATE}.csv")
+                hourly_df.to_csv(hourly_file, index=False, encoding="utf-8")
+                hourly_size = os.path.getsize(hourly_file) / (1024*1024)
+                print(f"  ✓ 小时级数据已保存: {hourly_file} ({hourly_size:.2f} MB)")
+            
+            # 保存daily数据
+            if daily_df is not None:
+                daily_file = os.path.join(OUTPUT_DIR, f"weather_daily_{city_name}_{START_DATE}_to_{END_DATE}.csv")
+                daily_df.to_csv(daily_file, index=False, encoding="utf-8")
+                daily_size = os.path.getsize(daily_file) / (1024*1024)
+                print(f"  ✓ 每日数据已保存: {daily_file} ({daily_size:.2f} MB)")
+            
+            # 标记为已完成
+            completed_cities.add(city_name)
+            save_checkpoint(completed_cities, checkpoint_file)
+            success_count += 1
+        else:
+            fail_count += 1
         
         # 添加延迟以避免API限流（重要！）
         if i < len(CITIES):
@@ -341,59 +318,23 @@ def main():
         
         print()
     
-    # 合并并保存数据
-    if hourly_data_list or daily_data_list:
-        print("=" * 80)
-        print("正在合并和保存数据...")
-        print()
-        
-        # 保存hourly数据
-        if hourly_data_list:
-            print("📊 合并小时级数据...")
-            hourly_combined = pd.concat(hourly_data_list, ignore_index=True)
-            hourly_file = os.path.join(OUTPUT_DIR, f"weather_hourly_{START_DATE}_to_{END_DATE}.csv")
-            hourly_combined.to_csv(hourly_file, index=False, encoding="utf-8")
-            hourly_size = os.path.getsize(hourly_file) / (1024*1024)
-            print(f"  ✓ 小时级数据已保存: {hourly_file}")
-            print(f"  ✓ 记录数: {len(hourly_combined):,}")
-            print(f"  ✓ 文件大小: {hourly_size:.2f} MB")
-            print()
-        
-        # 保存daily数据
-        if daily_data_list:
-            print("📊 合并每日数据...")
-            daily_combined = pd.concat(daily_data_list, ignore_index=True)
-            daily_file = os.path.join(OUTPUT_DIR, f"weather_daily_{START_DATE}_to_{END_DATE}.csv")
-            daily_combined.to_csv(daily_file, index=False, encoding="utf-8")
-            daily_size = os.path.getsize(daily_file) / (1024*1024)
-            print(f"  ✓ 每日数据已保存: {daily_file}")
-            print(f"  ✓ 记录数: {len(daily_combined):,}")
-            print(f"  ✓ 文件大小: {daily_size:.2f} MB")
-            print()
-        
-        # 统计信息
-        if hourly_data_list:
-            print("📈 数据统计:")
-            print(f"  - 成功获取城市: {len(completed_cities)}/{len(CITIES)}")
-            print(f"  - 时间跨度: 25年 (2000-2024)")
-            print(f"  - 小时级变量: {len(HOURLY_VARIABLES)} 个")
-            print(f"  - 每日级变量: {len(DAILY_VARIABLES)} 个")
-            if hourly_data_list and daily_data_list:
-                total_size = hourly_size + daily_size
-                print(f"  - 总文件大小: {total_size:.2f} MB")
-            print()
-        
-        # 删除检查点文件
-        if os.path.exists(checkpoint_file):
-            os.remove(checkpoint_file)
-        
-        elapsed = datetime.now() - start_time
-        print("=" * 80)
-        print(f"✅ 数据获取完成！总耗时: {elapsed}")
-        print("=" * 80)
-        
-    else:
-        print("✗ 没有成功获取任何数据")
+    # 最终统计
+    print("=" * 80)
+    print("数据获取完成!")
+    print("=" * 80)
+    print(f"✅ 成功: {success_count} 个城市")
+    print(f"❌ 失败: {fail_count} 个城市")
+    print(f"⏱ 总耗时: {datetime.now() - start_time}")
+    print()
+    print(f"📁 数据文件保存在: {os.path.abspath(OUTPUT_DIR)}")
+    print(f"   - weather_hourly_<城市名>_*.csv")
+    print(f"   - weather_daily_<城市名>_*.csv")
+    print("=" * 80)
+    
+    # 删除检查点文件
+    if os.path.exists(checkpoint_file):
+        os.remove(checkpoint_file)
+        print("\n✓ 已清理临时检查点文件")
 
 
 if __name__ == "__main__":
