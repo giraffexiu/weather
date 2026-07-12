@@ -49,11 +49,12 @@ from split_data import (
     save_splits,
 )
 
-# 路径配置
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
-REPORT_DIR = PROJECT_ROOT / "outputs" / "reports"
-FIGURE_DIR = PROJECT_ROOT / "outputs" / "figures"
+# 路径配置 - 使用相对路径
+# 从 src 目录向上一级到 dataset_analysis，然后设置各个输出目录
+ANALYSIS_ROOT = Path(__file__).resolve().parent.parent
+PROCESSED_DIR = ANALYSIS_ROOT / "data" / "processed"
+REPORT_DIR = ANALYSIS_ROOT / "outputs" / "reports"
+FIGURE_DIR = ANALYSIS_ROOT / "outputs" / "figures"
 
 # 默认配置
 CONFIG = {

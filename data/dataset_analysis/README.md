@@ -30,12 +30,13 @@ dataset_analysis/
 ├── notebooks/
 │   └── run_eda.py                # EDA 可视化脚本
 ├── data/
-│   ├── raw/                      # 软链接到原始 dataset 目录
 │   └── processed/                # 处理后的训练数据（.npz）
 ├── outputs/
 │   ├── figures/                  # EDA 图表（10张PNG）
 │   └── reports/                  # 数据字典、异常值报告、分析报告
 └── model/                        # 模型训练代码（待添加）
+
+注意：原始数据从 `../dataset/` 目录读取（与 dataset_analysis 同级）
 ```
 
 ## 快速开始

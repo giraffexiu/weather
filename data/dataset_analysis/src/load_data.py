@@ -15,9 +15,9 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# 项目路径
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-DATASET_DIR = PROJECT_ROOT / "dataset"
+# 项目路径 - 使用相对路径定位 dataset 目录
+# 从 src 目录向上两级到 data，然后进入 dataset
+DATASET_DIR = Path(__file__).resolve().parent.parent.parent / "dataset"
 PROCESSED_DIR = Path(__file__).resolve().parent.parent / "data" / "processed"
 
 # 字段元数据定义
