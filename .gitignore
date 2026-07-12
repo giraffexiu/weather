@@ -1,7 +1,3 @@
-# 天气数据集文件 - 文件太大，不提交到仓库
-data/*.csv
-data/progress_checkpoint.json
-
 # Python相关
 __pycache__/
 *.py[cod]
