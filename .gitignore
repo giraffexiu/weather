@@ -2,6 +2,8 @@
 dataset/*.csv
 data/*.csv
 data/progress_checkpoint.json
+# 清洗后的大文件（超过100MB）
+data/data_clean/cleaned_data/*.csv
 # Python相关
 __pycache__/
 *.py[cod]
