@@ -2,7 +2,6 @@
 dataset/*.csv
 data/*.csv
 data/progress_checkpoint.json
-
 # Python相关
 __pycache__/
 *.py[cod]
