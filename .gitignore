@@ -10,6 +10,9 @@ data/data_clean/cleaned_data/*.csv
 data/data_engineer/daily_data/dataset_loader/cache/
 data/data_engineer/daily_data/processed_data/*.csv
 # Python相关
+#处理process_data文件生成的csv文件
+data/data_engineer/hourly_data/processed_data/*.csv
+
 __pycache__/
 *.py[cod]
 *$py.class
