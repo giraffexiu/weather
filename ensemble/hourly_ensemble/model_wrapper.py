@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from config import (
+from .config import (
     MODEL3_CHECKPOINT,
     MODEL3_DIR,
     MODEL3_TARGET_INDICES,
@@ -17,8 +17,8 @@ from config import (
     DEVICE,
     DATA_DIR,
 )
-from probability_converter import ProbabilityConverter
-from post_process import post_process as _post_process
+from .probability_converter import ProbabilityConverter
+from .post_process import post_process as _post_process
 
 
 class HourModelWrapper:

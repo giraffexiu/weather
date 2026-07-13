@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeatherAI - 智能天气预测</title>
+<style>
+:root {
+  --bg: #0f172a; --surface: #1e293b; --border: #334155;
+  --text: #e2e8f0; --text2: #94a3b8; --accent: #38bdf8;
+  --green: #4ade80; --red: #f87171; --yellow: #fbbf24; --purple: #a78bfa; --orange: #fb923c;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+header { background:var(--surface); border-bottom:1px solid var(--border); padding:16px 32px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; }
+header h1 { font-size:22px; background:linear-gradient(135deg,var(--accent),var(--purple)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.container { max-width:1400px; margin:0 auto; padding:24px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:20px; }
+.card h3 { color:var(--accent); margin-bottom:12px; font-size:16px; }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.grid5 { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; }
+input, select, button { padding:10px 14px; border-radius:8px; border:1px solid var(--border); background:var(--bg); color:var(--text); font-size:14px; }
+input:focus, select:focus { outline:none; border-color:var(--accent); }
+select { cursor:pointer; min-width:200px; }
+button { background:var(--accent); color:#000; border:none; cursor:pointer; font-weight:600; transition:all .2s; }
+button:hover { opacity:0.85; transform:translateY(-1px); }
+button:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+
+.stat-card { text-align:center; padding:16px; border-radius:10px; background:rgba(56,189,248,0.05); border:1px solid rgba(56,189,248,0.15); }
+.stat-card .value { font-size:28px; font-weight:700; margin:8px 0; }
+.stat-card .label { color:var(--text2); font-size:13px; }
+.stat-card.green .value { color:var(--green); }
+.stat-card.blue .value { color:var(--accent); }
+.stat-card.purple .value { color:var(--purple); }
+.stat-card.yellow .value { color:var(--yellow); }
+.stat-card.orange .value { color:var(--orange); }
+
+/* 搜索栏 */
+.predict-bar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+.predict-bar select { flex:1; min-width:200px; }
+.predict-bar .time-group { display:flex; gap:8px; }
+.predict-bar .time-group input { width:140px; }
+
+/* 天气展示 */
+.weather-hero { display:flex; align-items:center; gap:24px; padding:16px 0; }
+.weather-hero .big-icon { font-size:72px; line-height:1; }
+.weather-hero .temp-block { }
+.weather-hero .main-temp { font-size:48px; font-weight:700; }
+.weather-hero .desc { font-size:20px; color:var(--text2); }
+.weather-hero .meta { display:flex; gap:20px; flex-wrap:wrap; margin-top:8px; }
+.weather-hero .meta-item { display:flex; align-items:center; gap:4px; color:var(--text2); font-size:14px; }
+.weather-hero .meta-item .val { color:var(--text); font-weight:600; }
+
+.model-section { margin-top:16px; }
+.model-section h4 { color:var(--purple); margin-bottom:8px; font-size:14px; }
+.model-section h4.g { color:var(--green); }
+.model-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:8px; }
+.model-item { background:rgba(167,139,250,0.05); border:1px solid rgba(167,139,250,0.15); border-radius:8px; padding:10px; text-align:center; }
+.model-item .mv { font-size:18px; font-weight:700; color:var(--purple); }
+.model-item .ml { font-size:11px; color:var(--text2); }
+
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th, td { padding:10px 14px; text-align:left; border-bottom:1px solid var(--border); }
+th { color:var(--accent); font-weight:600; }
+td { color:var(--text2); }
+.badge { display:inline-block; padding:2px 8px; border-radius:12px; font-size:12px; }
+.badge.good { background:rgba(74,222,128,0.2); color:var(--green); }
+.badge.ok { background:rgba(251,191,36,0.2); color:var(--yellow); }
+.badge.warn { background:rgba(248,113,113,0.2); color:var(--red); }
+
+.chart-wrap { height:300px; position:relative; }
+.loading { text-align:center; padding:32px; color:var(--text2); }
+.spinner { display:inline-block; width:24px; height:24px; border:3px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.error-box { background:rgba(248,113,113,0.1); border:1px solid rgba(248,113,113,0.3); border-radius:8px; padding:12px; color:var(--red); font-size:13px; }
+footer { text-align:center; padding:24px; color:var(--text2); font-size:12px; border-top:1px solid var(--border); margin-top:32px; }
+
+@media (max-width:900px) { .grid2,.grid5 { grid-template-columns:1fr; } .weather-hero { flex-direction:column; text-align:center; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>WeatherAI -- 智能天气预测系统</h1>
+  <span style="color:var(--text2);font-size:13px;">49城市 | Hourly + Daily 模型 | 实时预报</span>
+</header>
+
+<div class="container">
+
+<div class="grid5">
+  <div class="card stat-card blue"><div class="label">样本集城市</div><div class="value">49</div></div>
+  <div class="card stat-card purple"><div class="label">模型</div><div class="value" style="font-size:16px;">Hourly+Daily</div></div>
+  <div class="card stat-card green"><div class="label">温度 MAE</div><div class="value">0.59°C</div></div>
+  <div class="card stat-card yellow"><div class="label">湿度 MAE</div><div class="value">2.65%</div></div>
+  <div class="card stat-card orange"><div class="label">时间范围</div><div class="value" style="font-size:14px;">2000-2024</div></div>
+</div>
+
+<!-- 预测面板 -->
+<div class="card">
+  <h3>🔮 城市天气预测</h3>
+  <div class="predict-bar">
+    <select id="city-select"><option value="">-- 选择城市 --</option></select>
+    <div class="time-group">
+      <input id="date-input" type="date">
+      <input id="time-input" type="time" value="12:00">
+    </div>
+    <button id="btn-predict" onclick="doPredict()">预测天气</button>
+  </div>
+  <div id="predict-result" style="margin-top:16px;">
+    <p style="color:var(--text2);">从样本集选择城市，设定未来日期和时间，点击预测。</p>
+  </div>
+</div>
+
+<div class="grid2">
+  <div>
+    <div class="card">
+      <h3>📊 模型性能</h3>
+      <div id="perf-table"></div>
+    </div>
+    <div class="card">
+      <h3>📉 训练曲线</h3>
+      <div class="chart-wrap"><canvas id="chart-training"></canvas></div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <h3>🎯 特征重要性</h3>
+      <div class="chart-wrap"><canvas id="chart-features"></canvas></div>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<footer>
+  WeatherAI · Wide & Deep 深度学习模型 · 基于 2000-2024 年 49 个欧洲城市数据<br>
+  Hourly 模型: Temp MAE=0.59°C | Daily 模型: 9目标联合预测 | 实时 Open-Meteo API
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ===== 图标 =====
+const ICONS = { sunny:'☀️', cloudy:'☁️', rain:'🌧️', snow:'❄️', fog:'🌫️', storm:'⛈️' };
+const BG = {
+  sunny:'rgba(251,191,36,0.1)', cloudy:'rgba(148,163,184,0.1)',
+  rain:'rgba(56,189,248,0.1)', snow:'rgba(167,139,250,0.1)',
+  fog:'rgba(148,163,184,0.08)', storm:'rgba(248,113,113,0.1)',
+};
+
+// 初始化
+const tom = new Date(); tom.setDate(tom.getDate()+1);
+document.getElementById('date-input').value = tom.toISOString().slice(0,10);
+
+// 加载城市
+fetch('/api/cities').then(r=>r.json()).then(d=>{
+  const sel = document.getElementById('city-select');
+  d.cities.forEach(c=>{
+    const o = document.createElement('option');
+    o.value = c.name; o.textContent = `${c.name}, ${c.country}`;
+    sel.appendChild(o);
+  });
+});
+
+// 加载统计
+fetch('/api/statistics').then(r=>r.json()).then(d=>{
+  const t = d.hourly_targets;
+  let h = '<table><tr><th>目标</th><th>单位</th><th>MAE</th><th>R²</th><th>评级</th></tr>';
+  for(const [k,v] of Object.entries(t)){
+    const b = v.r2>=0.95?'good':v.r2>=0.8?'ok':'warn';
+    const l = b==='good'?'优秀':b==='ok'?'良好':'一般';
+    h += `<tr><td>${k}</td><td>${v.unit}</td><td>${v.mae}</td><td>${v.r2.toFixed(3)}</td><td><span class="badge ${b}">${l}</span></td></tr>`;
+  }
+  h += '</table>';
+  document.getElementById('perf-table').innerHTML = h;
+});
+
+drawTrainingChart();
+drawFeatureChart();
+
+// ===== 预测 =====
+async function doPredict(){
+  const city = document.getElementById('city-select').value;
+  if(!city) return alert('请选择城市');
+  const date = document.getElementById('date-input').value;
+  const time = document.getElementById('time-input').value || '12:00';
+  if(!date) return alert('请选择日期');
+  const target = `${date}T${time}:00`;
+
+  const btn = document.getElementById('btn-predict');
+  btn.disabled=true; btn.textContent='预测中...';
+  document.getElementById('predict-result').innerHTML = '<div class="loading"><div class="spinner"></div><p>获取预报 & 运行模型...</p></div>';
+
+  try{
+    const res = await fetch('/api/predict', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({city, target_time: target})
+    });
+    if(!res.ok){ const e = await res.json(); throw new Error(e.detail); }
+    renderResult(await res.json());
+  }catch(e){
+    document.getElementById('predict-result').innerHTML = `<div class="error-box">❌ ${e.message}</div>`;
+  }finally{
+    btn.disabled=false; btn.textContent='预测天气';
+  }
+}
+
+function renderResult(data){
+  let h = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+    <div><strong style="font-size:16px;">📍 ${data.city}, ${data.country}</strong> (${data.latitude?.toFixed(2)}, ${data.longitude?.toFixed(2)})</div>
+    <div style="color:var(--text2);font-size:13px;">🕐 ${data.target_time.replace('T',' ')}</div>
+  </div>`;
+
+  // Hourly
+  if(data.hourly && !data.hourly.error){
+    const r = data.hourly, cat = r.weather_category||'cloudy';
+    h += `<div class="weather-hero" style="background:${BG[cat]};border-radius:12px;padding:20px;margin-bottom:12px;">
+      <div class="big-icon">${ICONS[cat]||'☁️'}</div>
+      <div>
+        <div class="main-temp">${r.api_forecast?.temperature_2m ?? '--'}°C</div>
+        <div class="desc">${r.weather_desc||'--'}</div>
+        <div class="meta">
+          <div class="meta-item">💧 湿度 <span class="val">${r.api_forecast?.relative_humidity_2m ?? '--'}%</span></div>
+          <div class="meta-item">🌬 风速 <span class="val">${r.api_forecast?.wind_speed_10m ?? '--'} m/s</span></div>
+          <div class="meta-item">🌧 降水 <span class="val">${r.api_forecast?.precipitation ?? '--'} mm</span></div>
+          <div class="meta-item">🤔 体感 <span class="val">${r.api_forecast?.apparent_temperature ?? '--'}°C</span></div>
+        </div>
+      </div>
+    </div>`;
+
+    if(r.model_prediction && !r.model_prediction.error){
+      h += `<div class="model-section"><h4>🧠 小时模型预测 (Wide & Deep)</h4><div class="model-grid">`;
+      const lbs={temperature_2m:'气温',precipitation:'降水',wind_speed_10m:'风速',apparent_temperature:'体感',relative_humidity_2m:'湿度'};
+      const us={temperature_2m:'°C',precipitation:'mm',wind_speed_10m:'m/s',apparent_temperature:'°C',relative_humidity_2m:'%'};
+      for(const [k,v] of Object.entries(r.model_prediction)) h += `<div class="model-item"><div class="mv">${v}${us[k]||''}</div><div class="ml">${lbs[k]||k}</div></div>`;
+      h += '</div></div>';
+    }
+  }
+
+  // Daily
+  if(data.daily && !data.daily.error){
+    const r = data.daily, cat = r.weather_category||'cloudy';
+    h += `<div style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px;">
+      <h4 style="color:var(--green);margin-bottom:8px;">📅 每日预报</h4>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:28px;">${ICONS[cat]||'☁️'}</span>
+        <span style="font-size:18px;">${r.weather_desc||'--'}</span>
+        <span style="color:var(--text2);">最高 ${r.api_forecast?.temperature_2m_max ?? '--'}°C</span>
+        <span style="color:var(--text2);">最低 ${r.api_forecast?.temperature_2m_min ?? '--'}°C</span>
+        <span style="color:var(--text2);">降水 ${r.api_forecast?.precipitation_sum ?? '--'} mm</span>
+      </div>
+    </div>`;
+
+    if(r.model_prediction && !r.model_prediction.error){
+      h += `<div class="model-section"><h4 class="g">🧠 每日模型预测 (Wide & Deep Daily)</h4><div class="model-grid">`;
+      const lbs={temperature_2m_mean:'日均温',temperature_2m_max:'最高',temperature_2m_min:'最低',temperature_range:'温差',feels_like_temperature:'体感',precipitation_sum:'降水',rain_sum:'降雨',snow_sum:'降雪',wind_speed_10m_max:'风速'};
+      const us={temperature_2m_mean:'°C',temperature_2m_max:'°C',temperature_2m_min:'°C',temperature_range:'°C',feels_like_temperature:'°C',precipitation_sum:'mm',rain_sum:'mm',snow_sum:'mm',wind_speed_10m_max:'m/s'};
+      for(const [k,v] of Object.entries(r.model_prediction)) h += `<div class="model-item"><div class="mv">${v}${us[k]||''}</div><div class="ml">${lbs[k]||k}</div></div>`;
+      h += '</div></div>';
+    }
+  }
+
+  document.getElementById('predict-result').innerHTML = h;
+}
+
+// ===== 图表 =====
+function drawTrainingChart(){
+  const ctx = document.getElementById('chart-training').getContext('2d');
+  const tr=[0.197,0.183,0.180,0.179,0.178,0.177,0.177,0.176,0.176,0.175,0.175,0.174,0.174,0.174,0.174,0.174,0.172,0.172,0.171,0.171,0.171,0.171,0.171,0.171,0.171,0.170,0.170,0.169,0.169,0.169,0.169,0.169,0.169,0.168,0.169,0.169,0.168,0.168,0.167,0.168];
+  const vl=[0.535,0.367,0.357,0.419,0.363,0.251,0.317,0.252,0.313,0.234,0.540,0.340,0.335,0.253,0.266,0.267,0.233,0.227,0.229,0.221,0.232,0.226,0.240,0.228,0.228,0.226,0.220,0.222,0.220,0.219,0.221,0.224,0.227,0.226,0.223,0.219,0.220,0.219,0.219,0.224];
+  new Chart(ctx,{type:'line',data:{labels:Array.from({length:tr.length},(_,i)=>i+1),datasets:[{label:'Train',data:tr,borderColor:'#38bdf8',borderWidth:2,pointRadius:0},{label:'Val',data:vl,borderColor:'#f87171',borderWidth:2,pointRadius:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94a3b8',font:{size:11}}}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'},grid:{color:'#1e293b'}}}}});
+}
+
+function drawFeatureChart(){
+  const ctx = document.getElementById('chart-features').getContext('2d');
+  new Chart(ctx,{type:'bar',data:{labels:['温度','湿度','气压','风速','云量','辐射','月份','小时','季节','城市编码'],datasets:[{data:[18,15,13,11,10,9,8,7,5,4],backgroundColor:['#38bdf8','#38bdf8','#38bdf8','#a78bfa','#a78bfa','#a78bfa','#334155','#334155','#334155','#334155'],borderRadius:4}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'},grid:{color:'#1e293b'}},y:{ticks:{color:'#94a3b8',font:{size:10}}}}}});
+}
+</script>
+
+</body>
+</html>
