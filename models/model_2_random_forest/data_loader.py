@@ -1,9 +1,9 @@
 """
-数据加载与目标构造模块 (Data Loader)
-双粒度多目标回归：日级 + 小时级
+数据加载与目标构造模块 (Data Loader) — 仅小时级
+多目标回归：对 5 个目标列各自 shift(-1)，目标=下一小时的气象变量值
 
-小时级标签：对 5 个目标列各自 shift(-1)，目标=下一小时的气象变量值
-日级标签：对 5 个日级目标列各自 shift(-1)，目标=明天的气象变量值
+数据重切分：上游 CSV 按年切分(train=2015~2023, test=2024)，
+本层将 2023 年数据从训练集移入测试集（train=2015~2022, test=2023~2024）
 """
 import pandas as pd
 import numpy as np
@@ -26,24 +26,9 @@ def _add_lag_features(df: pd.DataFrame, cols: List[str], periods: List[int],
     return df
 
 
-def _add_rolling_features(df: pd.DataFrame, cols: List[str], window: int,
-                          group_col: str = "city_id") -> pd.DataFrame:
-    """添加滑动窗口统计特征（按城市分组）"""
-    df = df.copy()
-    for col in cols:
-        if col not in df.columns:
-            continue
-        grp = df.groupby(group_col)[col]
-        df[f"{col}_roll{window}_mean"] = grp.transform(
-            lambda x: x.rolling(window, min_periods=1).mean())
-        df[f"{col}_roll{window}_std"] = grp.transform(
-            lambda x: x.rolling(window, min_periods=1).std())
-    return df
-
-
 def _add_pressure_change(df: pd.DataFrame, col: str, shift_period: int = 3,
                          group_col: str = "city_id") -> pd.DataFrame:
-    """气压变化率（前 N 小时/天 - 当前值）"""
+    """气压变化率（前 N 小时 - 当前值）"""
     df = df.copy()
     if col in df.columns:
         df[f"{col}_change_{shift_period}"] = (
@@ -108,36 +93,56 @@ def _add_interaction_features_hourly(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _add_interaction_features_daily(df: pd.DataFrame) -> pd.DataFrame:
-    """日级特征交互"""
-    df = df.copy()
-    if "temperature_2m_mean" in df.columns and "humidity_mean" in df.columns:
-        df["temp_humidity_daily"] = df["temperature_2m_mean"] * df["humidity_mean"]
-    if "pressure_mean" in df.columns and "wind_direction_mean" in df.columns:
-        df["pressure_wind_daily"] = df["pressure_mean"] * df["wind_direction_mean"]
-    if "cloud_cover_mean" in df.columns and "shortwave_radiation_sum" in df.columns:
-        df["cloud_rad_ratio_daily"] = df["cloud_cover_mean"] / (
-            df["shortwave_radiation_sum"].abs() + 0.1)
-    return df
-
-
-def _get_feature_cols(df: pd.DataFrame, granularity: str, target_cols: List[str]) -> List[str]:
+def _get_feature_cols(df: pd.DataFrame, target_names: List[str]) -> List[str]:
     """获取特征列（排除标识/时间/目标列）"""
     exclude = set(config.EXCLUDE_COLS_BASE)
-    exclude.update(target_cols)
+    exclude.update(target_names)
     feature_cols = [c for c in df.columns if c not in exclude]
     return feature_cols
+
+
+def _resplit_by_date(train_df: pd.DataFrame, test_df: pd.DataFrame,
+                     cutoff: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    按日期重切分：将 train_df 中 time >= cutoff 的行移入 test_df
+
+    Args:
+        train_df: 上游训练集 CSV（2015~2023）
+        test_df: 上游测试集 CSV（2024）
+        cutoff: 切分日期，train 保留 time < cutoff，test 收集 time >= cutoff
+
+    Returns:
+        (new_train, new_test)
+    """
+    cutoff_ts = pd.Timestamp(cutoff)
+
+    train_df = train_df.copy()
+    train_df["time"] = pd.to_datetime(train_df["time"])
+
+    mask_move = train_df["time"] >= cutoff_ts
+    moved = train_df[mask_move].copy()
+    new_train = train_df[~mask_move].copy()
+
+    test_df = test_df.copy()
+    test_df["time"] = pd.to_datetime(test_df["time"])
+    new_test = pd.concat([moved, test_df], ignore_index=True)
+
+    return new_train, new_test
 
 
 def load_hourly(subset_frac: float = 1.0, verbose: bool = True) -> Tuple:
     """
     加载小时级数据并构造多目标回归标签
 
-    目标：用当前小时特征预测下一小时的 5 个气象变量值
-    标签来源：对 HOURLY_TARGET_COLUMNS 中每列做 shift(-1)
+    数据流：
+      1. 读取上游 train_features.csv(2015~2023) + test_features.csv(2024)
+      2. 按 TRAIN_CUTOFF 重切分：train=2015~2022, test=2023~2024
+      3. 构造标签：对 5 个目标列各自 shift(-1) = 下一小时值
+      4. 对 precipitation 目标做 log1p 变换（长尾→近似正态）
+      5. 时序特征增强：lag(1~48h) + rolling(3~48h) + 气压变化 + 云量趋势 + 交互
 
     Args:
-        subset_frac: 子采样比例（<1 时随机抽取城市内的连续块）
+        subset_frac: 子采样比例（仅对训练集，加速 GridSearch）
         verbose: 是否打印详细信息
 
     Returns:
@@ -148,19 +153,27 @@ def load_hourly(subset_frac: float = 1.0, verbose: bool = True) -> Tuple:
         print("加载小时级数据（多目标回归）")
         print(f"{'='*60}")
 
-    train_df = pd.read_csv(config.HOURLY_TRAIN_PATH)
-    test_df = pd.read_csv(config.HOURLY_TEST_PATH)
+    raw_train = pd.read_csv(config.HOURLY_TRAIN_PATH)
+    raw_test = pd.read_csv(config.HOURLY_TEST_PATH)
 
     if verbose:
-        print(f"训练集: {len(train_df):,} 行 × {len(train_df.columns)} 列")
-        print(f"测试集: {len(test_df):,} 行 × {len(test_df.columns)} 列")
+        print(f"上游训练集: {len(raw_train):,} 行")
+        print(f"上游测试集: {len(raw_test):,} 行")
+
+    # 重切分：2023 年数据从训练集移入测试集
+    train_df, test_df = _resplit_by_date(raw_train, raw_test, config.TRAIN_CUTOFF)
+
+    if verbose:
+        print(f"\n重切分后:")
+        print(f"  训练集: {len(train_df):,} 行 ({train_df['time'].min()} ~ {train_df['time'].max()})")
+        print(f"  测试集: {len(test_df):,} 行 ({test_df['time'].min()} ~ {test_df['time'].max()})")
 
     target_cols = config.HOURLY_TARGET_COLUMNS
-
     missing = [c for c in target_cols if c not in train_df.columns]
     if missing:
         raise ValueError(f"训练集缺少目标列: {missing}")
 
+    # 排序 + 编码
     for df in (train_df, test_df):
         df.sort_values(["city_id", "time"], inplace=True)
         df.reset_index(drop=True, inplace=True)
@@ -174,9 +187,17 @@ def load_hourly(subset_frac: float = 1.0, verbose: bool = True) -> Tuple:
 
     # 构造标签：下一小时的 5 个气象变量值
     for df in (train_df, test_df):
-        for i, col in enumerate(target_cols):
+        for col in target_cols:
             df[f"target_{col}"] = df.groupby("city_id")[col].shift(-1)
         df.dropna(subset=[f"target_{col}" for col in target_cols], inplace=True)
+
+    # precipitation 目标 log1p 变换
+    precip_target = "target_precipitation"
+    if config.USE_LOG_TRANSFORM_PRECIP and precip_target in train_df.columns:
+        for df in (train_df, test_df):
+            df[precip_target] = np.log1p(df[precip_target] - df[precip_target].min())
+        if verbose:
+            print(f"\nprecipitation 目标已 log1p 变换")
 
     # 时序特征增强
     for i, df in enumerate([train_df, test_df]):
@@ -192,8 +213,9 @@ def load_hourly(subset_frac: float = 1.0, verbose: bool = True) -> Tuple:
         else:
             test_df = df
 
-    # 删除因最大滞后(24)产生的 NaN 行
-    max_lag_col = f"{config.LAG_COLS_HOURLY[0]}_lag_{config.LAG_PERIODS_HOURLY[-1]}"
+    # 删除因最大滞后产生的 NaN 行
+    max_lag = max(config.LAG_PERIODS_HOURLY)
+    max_lag_col = f"{config.LAG_COLS_HOURLY[0]}_lag_{max_lag}"
     if max_lag_col in train_df.columns:
         train_df.dropna(subset=[max_lag_col], inplace=True)
         test_df.dropna(subset=[max_lag_col], inplace=True)
@@ -204,159 +226,15 @@ def load_hourly(subset_frac: float = 1.0, verbose: bool = True) -> Tuple:
         df[roll_nan_cols] = df[roll_nan_cols].fillna(0)
 
     target_names = [f"target_{col}" for col in target_cols]
-    feature_cols = _get_feature_cols(train_df, "hourly", target_names)
+    feature_cols = _get_feature_cols(train_df, target_names)
     if verbose:
-        print(f"特征数: {len(feature_cols)}")
+        print(f"\n特征数: {len(feature_cols)}")
         print(f"目标变量: {target_cols}")
         print(f"目标统计(train):\n{train_df[target_names].describe().round(2).to_string()}")
 
     return (train_df[feature_cols].values, train_df[target_names].values,
             test_df[feature_cols].values, test_df[target_names].values,
             feature_cols)
-
-
-def load_daily(verbose: bool = True) -> Tuple:
-    """
-    加载日级数据并构造多目标回归标签
-
-    目标：用今天特征预测明天的 5 个气象变量值
-    标签来源：对 DAILY_TARGET_COLUMNS 中每列做 shift(-1)
-
-    Returns:
-        (X_train, y_train, X_test, y_test, feature_names)
-    """
-    if verbose:
-        print(f"\n{'='*60}")
-        print("加载日级数据（多目标回归）")
-        print(f"{'='*60}")
-
-    train_df = pd.read_csv(config.DAILY_TRAIN_PATH)
-    test_df = pd.read_csv(config.DAILY_TEST_PATH)
-
-    if verbose:
-        print(f"训练集: {len(train_df):,} 行 × {len(train_df.columns)} 列")
-        print(f"测试集: {len(test_df):,} 行 × {len(test_df.columns)} 列")
-
-    # 从小时级清洗数据聚合日级补充特征（气压/湿度/云量/风向）
-    daily_extra = _aggregate_hourly_to_daily_features(verbose=verbose)
-
-    train_df["date"] = pd.to_datetime(train_df["time"]).dt.date
-    test_df["date"] = pd.to_datetime(test_df["time"]).dt.date
-    for i, df in enumerate([train_df, test_df]):
-        merged = df.merge(daily_extra, on=["city", "date"], how="left")
-        if i == 0:
-            train_df = merged
-        else:
-            test_df = merged
-
-    target_cols = config.DAILY_TARGET_COLUMNS
-    missing = [c for c in target_cols if c not in train_df.columns]
-    if missing:
-        raise ValueError(f"日级数据缺少目标列: {missing}，"
-                         f"请确认 humidity_mean 是否已从小时级聚合")
-
-    for df in (train_df, test_df):
-        df.sort_values(["city_id", "time"], inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        df = _encode_categorical(df)
-
-    # 字符串列编码
-    train_df = _encode_categorical(train_df)
-    test_df = _encode_categorical(test_df)
-
-    # 重新排序（_encode_categorical 返回副本后排序可能丢失）
-    for df in (train_df, test_df):
-        df.sort_values(["city_id", "time"], inplace=True)
-        df.reset_index(drop=True, inplace=True)
-
-    # 构造标签：明天的 5 个气象变量值
-    for df in (train_df, test_df):
-        for col in target_cols:
-            df[f"target_{col}"] = df.groupby("city_id")[col].shift(-1)
-        df.dropna(subset=[f"target_{col}" for col in target_cols], inplace=True)
-
-    # 时序特征增强
-    for i, df in enumerate([train_df, test_df]):
-        df = _add_lag_features(df, config.LAG_COLS_DAILY, config.LAG_PERIODS_DAILY)
-        df = _add_multi_scale_rolling(df, ["temperature_2m_mean", "precipitation_sum",
-                                            "pressure_mean", "cloud_cover_mean"],
-                                      config.ROLLING_WINDOWS_DAILY)
-        df = _add_pressure_change(df, "pressure_mean",
-                                 shift_period=config.DAILY_PRESSURE_CHANGE_PERIOD)
-        df = _add_cloud_features(df, "cloud_cover_mean")
-        df = _add_interaction_features_daily(df)
-        if i == 0:
-            train_df = df
-        else:
-            test_df = df
-
-    # 删除因最大滞后(30)产生的 NaN 行
-    max_lag_col = f"{config.LAG_COLS_DAILY[0]}_lag_{config.LAG_PERIODS_DAILY[-1]}"
-    if max_lag_col in train_df.columns:
-        train_df.dropna(subset=[max_lag_col], inplace=True)
-        test_df.dropna(subset=[max_lag_col], inplace=True)
-    for df in (train_df, test_df):
-        roll_nan_cols = [c for c in df.columns
-                         if ("_roll" in c and c.endswith("_std"))
-                         or c.endswith("_variability") or c.endswith("_trend")]
-        df[roll_nan_cols] = df[roll_nan_cols].fillna(0)
-
-    for df in (train_df, test_df):
-        df.drop(columns=["date"], inplace=True, errors="ignore")
-
-    target_names = [f"target_{col}" for col in target_cols]
-    feature_cols = _get_feature_cols(train_df, "daily", target_names)
-    if verbose:
-        print(f"特征数: {len(feature_cols)}")
-        print(f"目标变量: {target_cols}")
-        print(f"目标统计(train):\n{train_df[target_names].describe().round(2).to_string()}")
-
-    return (train_df[feature_cols].values, train_df[target_names].values,
-            test_df[feature_cols].values, test_df[target_names].values,
-            feature_cols)
-
-
-def _aggregate_hourly_to_daily_features(verbose: bool = True) -> pd.DataFrame:
-    """
-    从小时级清洗数据按城市+日期聚合出日级补充特征
-
-    日级清洗数据天生缺失气压/湿度/云量/风向，这些是最强天气预测信号。
-
-    Returns:
-        DataFrame with columns [city, date, *aggregated features]
-    """
-    if verbose:
-        print("  从小时级清洗数据聚合日级补充特征（气压/湿度/云量/风向）...")
-
-    h = pd.read_csv(config.HOURLY_CLEANED_PATH)
-    h["date"] = pd.to_datetime(h["time"]).dt.date
-
-    wind_rad = np.deg2rad(h["wind_direction_10m"])
-    h["wind_u"] = np.sin(wind_rad)
-    h["wind_v"] = np.cos(wind_rad)
-
-    agg = h.groupby(["city", "date"]).agg(
-        pressure_mean=("pressure_msl", "mean"),
-        pressure_min=("pressure_msl", "min"),
-        humidity_mean=("relative_humidity_2m", "mean"),
-        humidity_max=("relative_humidity_2m", "max"),
-        cloud_cover_mean=("cloud_cover", "mean"),
-        cloud_cover_max=("cloud_cover", "max"),
-        wind_speed_mean=("wind_speed_10m", "mean"),
-        gust_max=("wind_gusts_10m", "max"),
-        wind_u_mean=("wind_u", "mean"),
-        wind_v_mean=("wind_v", "mean"),
-    ).reset_index()
-
-    agg["wind_direction_mean"] = (
-        np.rad2deg(np.arctan2(agg["wind_u_mean"], agg["wind_v_mean"])) + 360) % 360
-    agg.drop(columns=["wind_u_mean", "wind_v_mean"], inplace=True)
-
-    if verbose:
-        print(f"  聚合完成: {len(agg):,} 行, {len(agg.columns)} 列")
-        print(f"  新增列: {[c for c in agg.columns if c not in ('city','date')]}")
-
-    return agg
 
 
 def _subsample_by_city(df: pd.DataFrame, frac: float) -> pd.DataFrame:
@@ -383,13 +261,8 @@ def save_feature_config(feature_names: List[str], granularity: str):
 
 
 if __name__ == "__main__":
-    print("=== 测试日级数据加载 ===")
-    X_train, y_train, X_test, y_test, feat = load_daily()
+    print("=== 测试小时级数据加载（子采样 5%） ===")
+    X_train, y_train, X_test, y_test, feat = load_hourly(subset_frac=0.05)
     print(f"\nX_train: {X_train.shape}, y_train: {y_train.shape}")
     print(f"X_test: {X_test.shape}, y_test: {y_test.shape}")
     print(f"特征列示例: {feat[:5]}...")
-
-    print("\n=== 测试小时级数据加载（子采样 5%） ===")
-    X_train_h, y_train_h, X_test_h, y_test_h, feat_h = load_hourly(subset_frac=0.05)
-    print(f"\nX_train: {X_train_h.shape}, y_train: {y_train_h.shape}")
-    print(f"X_test: {X_test_h.shape}, y_test: {y_test_h.shape}")

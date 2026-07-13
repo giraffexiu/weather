@@ -1,6 +1,7 @@
 """
 统一推理接口 (Predict) — 仅小时级
 多目标回归：预测下一小时的 5 个气象变量值
+precipitation 输出时自动还原 log1p 变换
 供集成研判层 (Ensemble Layer) 调用
 """
 import pickle
@@ -33,26 +34,36 @@ class RFPredictor:
             self.feature_names = saved.get("feature_names", [])
             self.target_columns = saved.get("target_columns", config.HOURLY_TARGET_COLUMNS)
             self.oob_score = saved.get("oob_score", None)
+            self.use_log_precip = saved.get("use_log_precip", config.USE_LOG_TRANSFORM_PRECIP)
         else:
             self.model = saved
             self.feature_names = []
             self.target_columns = config.HOURLY_TARGET_COLUMNS
             self.oob_score = getattr(self.model, "oob_score_", 0.0)
+            self.use_log_precip = config.USE_LOG_TRANSFORM_PRECIP
 
     def predict(self, X) -> np.ndarray:
-        """返回回归预测值 [n_samples, n_targets]"""
-        return self.model.predict(X)
+        """返回回归预测值 [n_samples, n_targets]，precipitation 自动还原 log1p"""
+        preds = self.model.predict(X)
+
+        if self.use_log_precip:
+            precip_idx = config.PRECIPITATION_TARGET_IDX
+            if len(preds.shape) > 1 and precip_idx < preds.shape[1]:
+                preds[:, precip_idx] = np.expm1(preds[:, precip_idx])
+                preds[:, precip_idx] = np.clip(preds[:, precip_idx], 0, None)
+
+        return preds
 
     def predict_hourly(self, X) -> dict:
         """
-        小时级预测接口：返回预测值 + 置信度参考
+        小时级预测接口：返回预测值 + 元信息
 
         Args:
             X: 特征矩阵 [n_samples, n_features]
 
         Returns:
             {
-                "prediction": [n_samples, 5] 预测值,
+                "prediction": [n_samples, 5] 预测值（precipitation 已还原原始尺度）,
                 "target_columns": 目标列名列表,
                 "oob_score": OOB 分数,
             }
@@ -89,8 +100,7 @@ class RFPredictor:
     def is_fallback_needed(self, X, threshold: float = 0.3) -> np.ndarray:
         """
         判断是否需要触发兜底方案
-        当 OOB Score 低于阈值，或输入特征存在大量缺失时返回 True
-        回归任务没有概率输出，用 OOB Score 作为模型整体置信度参考
+        回归任务用 OOB Score 作为模型整体置信度参考
 
         Args:
             X: 特征矩阵
@@ -116,6 +126,7 @@ if __name__ == "__main__":
     predictor = RFPredictor(model_path=path)
     print(f"模型加载成功: hourly")
     print(f"目标变量: {predictor.get_target_columns()}")
+    print(f"log1p(precipitation): {predictor.use_log_precip}")
     print(f"OOB Score: {predictor.get_oob_score():.4f}")
     print(f"特征数: {len(predictor.get_feature_importance())}")
     print(f"Top-5 特征:")

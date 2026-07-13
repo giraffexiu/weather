@@ -2,6 +2,12 @@
 小时级多目标回归训练脚本 (Train Hourly)
 策略：10% 子样本粗搜参数 -> 全量训练 + OOB -> 评估
 预测目标：下一小时的 5 个气象变量（温度/降水/风速/体感温度/相对湿度）
+
+优化措施：
+  1. 数据重切分：2023 年移入测试集（train=2015~2022, test=2023~2024）
+  2. precipitation 目标 log1p 变换（长尾→近似正态）
+  3. lag_48 + rolling_48 特征（捕捉两天周期）
+  4. 精简 GridSearch 网格（24 组 vs 原 81 组）
 """
 import sys
 import time
@@ -24,7 +30,7 @@ def _print_grid_results(grid):
     results = grid.cv_results_
     n_combos = len(results["params"])
     print(f"\n{'='*90}")
-    print(f"GridSearch 参数效率表（{n_combos} 组参数）")
+    print(f"GridSearch 参数效率表（{n_combos} 组参数 × {config.CV_SPLITS} CV = {n_combos * config.CV_SPLITS} 次拟合）")
     print(f"{'='*90}")
     header = f"{'#':>3} | {'n_est':>5} {'depth':>6} {'leaf':>4} {'feat':>6} | {'CV MSE(neg)':>12} {'CV std':>8} | {'fit_time':>9}"
     print(header)
@@ -48,6 +54,9 @@ def train_hourly(use_grid_search: bool = True):
     """小时级训练主函数"""
     print("=" * 60)
     print("随机森林 - 小时级多目标回归训练")
+    print(f"数据切分: train < {config.TRAIN_CUTOFF}, test >= {config.TEST_START}")
+    print(f"log1p(precipitation): {config.USE_LOG_TRANSFORM_PRECIP}")
+    print(f"lag 特征: {config.LAG_PERIODS_HOURLY}")
     print("=" * 60)
 
     # 1. 子采样数据粗搜参数
@@ -74,8 +83,8 @@ def train_hourly(use_grid_search: bool = True):
         best_params = grid.best_params_
     else:
         best_params = {
-            "n_estimators": 200, "max_depth": 30,
-            "min_samples_leaf": 8, "min_samples_split": 2,
+            "n_estimators": 300, "max_depth": 30,
+            "min_samples_leaf": 4,
             "max_features": "log2",
         }
 
@@ -127,6 +136,8 @@ def train_hourly(use_grid_search: bool = True):
         "granularity": "hourly",
         "subsample_frac": config.HOURLY_SUBSAMPLE_FRAC,
         "train_time_sec": train_time,
+        "use_log_precip": config.USE_LOG_TRANSFORM_PRECIP,
+        "train_cutoff": config.TRAIN_CUTOFF,
     }
     with open(config.HOURLY_MODEL_PATH, "wb") as f:
         pickle.dump(saved, f)
@@ -151,3 +162,4 @@ if __name__ == "__main__":
     print(f"OOB Score: {res['oob_score']:.4f}")
     print(f"Overall RMSE: {res['overall_rmse']:.4f}")
     print(f"Overall R²: {res['overall_r2']:.4f}")
+    print(f"训练耗时: {res['train_time_sec']:.1f}s ({res['train_time_sec']/60:.1f} min)")

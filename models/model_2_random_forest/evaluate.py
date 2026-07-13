@@ -1,12 +1,13 @@
 """
-统一评估模块 (Evaluate)
-多目标回归指标：RMSE / MAE / R² / 解释方差
+统一评估模块 (Evaluate) — 小时级多目标回归
+指标：RMSE / MAE / R² / 解释方差
+precipitation 目标做 log1p 变换后，评估时还原为原始尺度
 特征重要性可视化
 """
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 import json
 
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
@@ -26,7 +27,7 @@ def evaluate_model(model, X_test, y_test, feature_names: List[str],
         X_test, y_test: 测试集 (y_test shape = [n_samples, n_targets])
         feature_names: 特征列名
         output_dir: 输出目录
-        granularity: "daily" 或 "hourly"
+        granularity: "hourly"
         target_columns: 目标列名列表
 
     Returns:
@@ -38,6 +39,7 @@ def evaluate_model(model, X_test, y_test, feature_names: List[str],
     y_pred = model.predict(X_test)
 
     n_targets = y_test.shape[1] if len(y_test.shape) > 1 else 1
+    precip_idx = config.PRECIPITATION_TARGET_IDX if config.USE_LOG_TRANSFORM_PRECIP else -1
 
     per_target = {}
     all_rmse, all_mae, all_r2 = [], [], []
@@ -46,6 +48,14 @@ def evaluate_model(model, X_test, y_test, feature_names: List[str],
         col_name = target_columns[i] if i < len(target_columns) else f"target_{i}"
         y_t = y_test[:, i] if n_targets > 1 else y_test
         y_p = y_pred[:, i] if n_targets > 1 else y_pred
+
+        # precipitation 还原 log1p -> 原始尺度
+        is_log = (i == precip_idx)
+        if is_log:
+            y_t = np.expm1(y_t)
+            y_p = np.expm1(y_p)
+            y_p = np.clip(y_p, 0, None)
+            col_name = f"{col_name} (log还原)"
 
         rmse = np.sqrt(mean_squared_error(y_t, y_p))
         mae = mean_absolute_error(y_t, y_p)
@@ -59,6 +69,7 @@ def evaluate_model(model, X_test, y_test, feature_names: List[str],
             "std_actual": float(np.std(y_t)),
             "mean_pred": float(np.mean(y_p)),
             "std_pred": float(np.std(y_p)),
+            "log_transformed": is_log,
         }
         all_rmse.append(rmse)
         all_mae.append(mae)
@@ -80,10 +91,11 @@ def evaluate_model(model, X_test, y_test, feature_names: List[str],
         print(f"OOB Score:    {oob_score:.4f}")
 
     print(f"\n各目标详情:")
-    print(f"{'目标':<25} {'RMSE':>10} {'MAE':>10} {'R²':>10}")
-    print("-" * 60)
+    print(f"{'目标':<30} {'RMSE':>10} {'MAE':>10} {'R²':>10}")
+    print("-" * 65)
     for col_name, m in per_target.items():
-        print(f"{col_name:<25} {m['rmse']:>10.4f} {m['mae']:>10.4f} {m['r2']:>10.4f}")
+        tag = " [log]" if m.get("log_transformed") else ""
+        print(f"{col_name:<30} {m['rmse']:>10.4f} {m['mae']:>10.4f} {m['r2']:>10.4f}")
 
     plot_feature_importance(model.feature_importances_, feature_names,
                              output_dir / "feature_importance.png",
@@ -98,6 +110,7 @@ def evaluate_model(model, X_test, y_test, feature_names: List[str],
         "oob_score": float(oob_score) if oob_score is not None else None,
         "best_params": getattr(model, "best_params_", None),
         "target_columns": target_columns,
+        "log_transformed_precip": config.USE_LOG_TRANSFORM_PRECIP,
         "per_target": per_target,
     }
 
@@ -113,6 +126,9 @@ def _write_md_report(results: dict, path: Path, granularity: str):
     """生成 Markdown 评估报告"""
     lines = [
         f"# 随机森林 {granularity.capitalize()} 评估报告（多目标回归）",
+        "",
+        f"数据切分: train < {config.TRAIN_CUTOFF}, test >= {config.TEST_START}",
+        f"log1p(precipitation): {results.get('log_transformed_precip', False)}",
         "",
         "## 整体指标",
         "",
