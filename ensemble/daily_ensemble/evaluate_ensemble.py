@@ -119,6 +119,16 @@ def evaluate_models():
     
     predictions = ensemble.predict(test_loader_model1, test_loader_model3)
     
+    # 对齐 test_df 和预测结果的样本数
+    n_predictions = len(next(iter(predictions['regression'].values())))
+    if len(test_df) != n_predictions:
+        print(f"\n⚠ 样本数量对齐: DataFrame有 {len(test_df)} 行, "
+              f"DataLoader返回 {n_predictions} 个预测")
+        print(f"  使用 DataFrame 的最后 {n_predictions} 行进行评估")
+        test_df_aligned = test_df.iloc[-n_predictions:].reset_index(drop=True)
+    else:
+        test_df_aligned = test_df
+    
     # 评估结果
     print("\n" + "="*70)
     print("评估结果")
@@ -137,22 +147,17 @@ def evaluate_models():
         model1_key = task_config['model1_key']
         target_column = MODEL1_REGRESSION_TASKS[model1_key]['target_column']
         
-        if target_column not in test_df.columns:
+        if target_column not in test_df_aligned.columns:
             print(f"  ⚠ 跳过 {task_name}: 目标列 {target_column} 不存在")
             continue
         
-        y_true = test_df[target_column].values
+        y_true = test_df_aligned[target_column].values
         
         # Model 1 预测
         y_pred_model1 = predictions['individual']['model1']['regression'][model1_key]
         metrics_model1 = calculate_regression_metrics(y_true, y_pred_model1)
         
         # Model 3 预测
-        model3_target = list(MODEL3Wrapper(converter).model.preprocessor.num_idx.keys())[
-            task_config['model3_index']
-        ] if hasattr(Model3Wrapper(converter).model, 'preprocessor') else None
-        
-        # 简化：直接从预测结果获取
         model3_targets = list(predictions['individual']['model3']['regression'].keys())
         y_pred_model3 = predictions['individual']['model3']['regression'][
             model3_targets[task_config['model3_index']]
@@ -197,11 +202,11 @@ def evaluate_models():
         model1_key = task_config['model1_key']
         target_column = MODEL1_CLASSIFICATION_TASKS[model1_key]['target_column']
         
-        if target_column not in test_df.columns:
+        if target_column not in test_df_aligned.columns:
             print(f"  ⚠ 跳过 {task_name}: 目标列 {target_column} 不存在")
             continue
         
-        y_true = test_df[target_column].values
+        y_true = test_df_aligned[target_column].values
         
         # Model 1 预测
         y_pred_model1 = predictions['individual']['model1']['classification'][model1_key]['prediction']

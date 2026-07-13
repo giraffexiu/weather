@@ -345,8 +345,24 @@ class SoftVotingEnsemble:
         # 执行预测
         predictions = self.predict(data_loader_model1, data_loader_model3)
         
+        # 获取预测结果的样本数
+        n_predictions = len(next(iter(predictions['regression'].values())))
+        
+        # DataLoader 由于时序窗口会丢弃前面的样本
+        # 对齐到 DataFrame 的最后 n_predictions 行
+        if len(test_df) != n_predictions:
+            print(f"\n⚠ 样本数量对齐: DataFrame有 {len(test_df)} 行, "
+                  f"DataLoader返回 {n_predictions} 个预测")
+            print(f"  使用 DataFrame 的最后 {n_predictions} 行")
+            aligned_df = test_df.iloc[-n_predictions:].copy()
+        else:
+            aligned_df = test_df.copy()
+        
+        # 重置索引以确保对齐
+        aligned_df = aligned_df.reset_index(drop=True)
+        
         # 构建结果 DataFrame
-        result_df = test_df[['time', 'city', 'country']].copy()
+        result_df = aligned_df[['time', 'city', 'country']].copy()
         
         # 添加回归预测
         for task_name, values in predictions['regression'].items():

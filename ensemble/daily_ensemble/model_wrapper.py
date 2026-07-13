@@ -136,35 +136,83 @@ class Model1Wrapper(BaseModelWrapper):
     
     def prepare_features_from_loader(self, data_loader) -> np.ndarray:
         """
-        从DataLoader准备特征矩阵
+        从DataLoader准备特征矩阵，只提取Model 1需要的25个特征
         
         Args:
             data_loader: PyTorch DataLoader
             
         Returns:
-            特征矩阵 (N, num_features)
+            特征矩阵 (N, 25) - 按照 feature_names 的顺序
         """
-        all_features = []
+        # 导入特征配置以了解特征顺序
+        try:
+            from dataset_loader.feature_config import (
+                CATEGORICAL_FEATURES, NUMERICAL_FEATURES, ORDINAL_FEATURES,
+                TIME_FEATURES, CYCLICAL_FEATURES, BINARY_FEATURES
+            )
+        except ImportError:
+            from feature_config import (
+                CATEGORICAL_FEATURES, NUMERICAL_FEATURES, ORDINAL_FEATURES,
+                TIME_FEATURES, CYCLICAL_FEATURES, BINARY_FEATURES
+            )
+        
+        # DataLoader中特征的顺序
+        dataloader_feature_order = {
+            'categorical': CATEGORICAL_FEATURES,  # city_id, country_id
+            'numerical': NUMERICAL_FEATURES + ORDINAL_FEATURES + TIME_FEATURES,
+            'cyclical': CYCLICAL_FEATURES,
+            'binary': BINARY_FEATURES
+        }
+        
+        # 建立从DataLoader特征到索引的映射
+        feature_to_idx = {}
+        idx = 0
+        for group_name in ['categorical', 'numerical', 'cyclical', 'binary']:
+            for feat_name in dataloader_feature_order[group_name]:
+                feature_to_idx[feat_name] = (group_name, idx % len(dataloader_feature_order[group_name]))
+                idx += 1
+        
+        # 收集所有批次的数据
+        all_batch_features = []
         
         for batch in data_loader:
-            # 从batch中提取各组特征并合并
-            # DataLoader返回的是时序数据，需要提取当前时刻的特征
-            batch_features = []
+            # 从batch中提取各组特征并合并成完整特征向量
+            batch_size = next(iter(batch.values())).shape[0]
+            
+            # 构建特征名称到值的映射（使用最后一个时间步）
+            feature_values = {}
             
             for group_name in ['categorical', 'numerical', 'cyclical', 'binary']:
                 if group_name in batch:
                     group_data = batch[group_name]  # (B, seq_length, n_features)
-                    # 取最后一个时间步的特征
-                    last_step = group_data[:, -1, :]  # (B, n_features)
-                    batch_features.append(last_step.cpu().numpy())
+                    last_step = group_data[:, -1, :].cpu().numpy()  # (B, n_features)
+                    
+                    for i, feat_name in enumerate(dataloader_feature_order[group_name]):
+                        feature_values[feat_name] = last_step[:, i]
             
-            # 合并所有特征组
-            if batch_features:
-                combined = np.concatenate(batch_features, axis=1)  # (B, total_features)
-                all_features.append(combined)
+            # 按照 Model 1 的 feature_names 顺序提取特征
+            batch_features = []
+            for feat_name in self.feature_names:
+                if feat_name in feature_values:
+                    batch_features.append(feature_values[feat_name])
+                else:
+                    # 如果特征不存在，用0填充（不应该发生）
+                    print(f"  ⚠ 特征 '{feat_name}' 在 DataLoader 中未找到，使用0填充")
+                    batch_features.append(np.zeros(batch_size))
+            
+            # 转置为 (B, num_features)
+            batch_matrix = np.column_stack(batch_features)
+            all_batch_features.append(batch_matrix)
         
         # 合并所有批次
-        X = np.concatenate(all_features, axis=0)  # (N, total_features)
+        X = np.concatenate(all_batch_features, axis=0)  # (N, 25)
+        
+        # 验证特征数量
+        if X.shape[1] != len(self.feature_names):
+            raise ValueError(
+                f"Feature count mismatch: extracted {X.shape[1]} features, "
+                f"but Model 1 expects {len(self.feature_names)} features"
+            )
         
         # 处理缺失值
         if np.isnan(X).any():
