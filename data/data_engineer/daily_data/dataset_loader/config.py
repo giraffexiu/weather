@@ -23,11 +23,20 @@ INCLUDE_CURRENT_DAY = False
 # ==================== 目标变量配置 ====================
 TARGET_TYPE = 'regression'  # 'regression' 或 'classification'
 
-# 回归任务：预测的目标列（可以是多个）
+# 回归任务：预测的目标列（9个天气变量）
 TARGET_COLUMNS = [
-    'temperature_2m_mean',      # 预测平均温度
-    # 'precipitation_sum',      # 可添加：预测降水量
-    # 'wind_speed_10m_max',     # 可添加：预测最大风速
+    # 温度类（5个）
+    'temperature_2m_max',        # 最高温度
+    'temperature_2m_min',        # 最低温度
+    'temperature_2m_mean',       # 平均温度
+    'temperature_range',         # 温度范围
+    'feels_like_temperature',    # 体感温度
+    # 降水类（3个）
+    'precipitation_sum',         # 总降水量
+    'rain_sum',                  # 降雨量
+    'snow_sum',                  # 降雪量
+    # 风速类（1个）
+    'wind_speed_10m_max',        # 最大风速
 ]
 
 # 分类任务配置（如果 TARGET_TYPE='classification'）
@@ -37,7 +46,7 @@ NUM_CLASSES = 2                      # 类别数量
 # ==================== DataLoader 配置 ====================
 BATCH_SIZE = 64             # 批次大小
 NUM_WORKERS = 4             # 数据加载线程数（根据CPU核心数调整）
-PIN_MEMORY = True           # 是否将数据固定到内存（GPU训练时推荐）
+PIN_MEMORY = False          # MPS不支持pin_memory，设为False避免警告
 SHUFFLE_TRAIN = True        # 训练集是否打乱
 SHUFFLE_TEST = False        # 测试集不打乱
 
