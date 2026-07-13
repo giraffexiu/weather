@@ -4,6 +4,7 @@
 预测目标：下一小时的 5 个气象变量（温度/降水/风速/体感温度/相对湿度）
 """
 import sys
+import time
 import pickle
 import numpy as np
 from pathlib import Path
@@ -16,6 +17,31 @@ from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
 import config
 from data_loader import load_hourly, save_feature_config
 from evaluate import evaluate_model
+
+
+def _print_grid_results(grid):
+    """输出 GridSearchCV 每组参数的 CV 分数 + 耗时"""
+    results = grid.cv_results_
+    n_combos = len(results["params"])
+    print(f"\n{'='*90}")
+    print(f"GridSearch 参数效率表（{n_combos} 组参数）")
+    print(f"{'='*90}")
+    header = f"{'#':>3} | {'n_est':>5} {'depth':>6} {'leaf':>4} {'feat':>6} | {'CV MSE(neg)':>12} {'CV std':>8} | {'fit_time':>9}"
+    print(header)
+    print("-" * 90)
+    for i in range(n_combos):
+        p = results["params"][i]
+        mean = results["mean_test_score"][i]
+        std = results["std_test_score"][i]
+        ft = results["mean_fit_time"][i]
+        depth = str(p.get("max_depth", "-"))
+        feat = str(p.get("max_features", "-"))
+        print(f"{i+1:>3} | {p['n_estimators']:>5} {depth:>6} {p['min_samples_leaf']:>4} {feat:>6} | {mean:>12.4f} {std:>8.4f} | {ft:>8.1f}s")
+    best_i = grid.best_index_
+    print(f"{'='*90}")
+    print(f"最优: #{best_i+1}  参数={grid.best_params_}")
+    print(f"最优 CV {config.CV_SCORING}: {grid.best_score_:.4f}  fit_time={results['mean_fit_time'][best_i]:.1f}s")
+    print(f"{'='*90}")
 
 
 def train_hourly(use_grid_search: bool = True):
@@ -44,9 +70,8 @@ def train_hourly(use_grid_search: bool = True):
         )
         grid.fit(X_sub, y_sub)
 
+        _print_grid_results(grid)
         best_params = grid.best_params_
-        print(f"\n最优参数(子样本): {best_params}")
-        print(f"最优 CV {config.CV_SCORING}: {grid.best_score_:.4f}")
     else:
         best_params = {
             "n_estimators": 200, "max_depth": 30,
@@ -79,8 +104,11 @@ def train_hourly(use_grid_search: bool = True):
     }
     print(f"最终参数: {final_params}")
 
+    t0 = time.time()
     rf_final = RandomForestRegressor(**final_params)
     rf_final.fit(X_train, y_train)
+    train_time = time.time() - t0
+    print(f"全量训练耗时: {train_time:.1f}s ({train_time/60:.1f} min)")
 
     oob_score = rf_final.oob_score_
     print(f"OOB Score (全量): {oob_score:.4f}")
@@ -98,6 +126,7 @@ def train_hourly(use_grid_search: bool = True):
         "oob_score": oob_score,
         "granularity": "hourly",
         "subsample_frac": config.HOURLY_SUBSAMPLE_FRAC,
+        "train_time_sec": train_time,
     }
     with open(config.HOURLY_MODEL_PATH, "wb") as f:
         pickle.dump(saved, f)
@@ -109,6 +138,7 @@ def train_hourly(use_grid_search: bool = True):
     results = evaluate_model(rf_final, X_test, y_test, feature_names,
                              config.HOURLY_OUTPUT_DIR, "hourly",
                              target_columns=config.HOURLY_TARGET_COLUMNS)
+    results["train_time_sec"] = train_time
 
     return rf_final, results
 
