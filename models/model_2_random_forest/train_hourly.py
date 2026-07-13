@@ -8,6 +8,7 @@
   2. precipitation 目标 log1p 变换（长尾→近似正态）
   3. lag_48 + rolling_48 特征（捕捉两天周期）
   4. 精简 GridSearch 网格（24 组 vs 原 81 组）
+  5. 最终模型瘦身：100棵树 + max_depth=20（原300棵/深度30=21GB，瘦身后预计2-4GB）
 """
 import sys
 import time
@@ -89,7 +90,7 @@ def train_hourly(use_grid_search: bool = True):
     else:
         print("\n跳过 GridSearch，使用上次搜索到的最优参数...")
         best_params = {
-            "n_estimators": 300, "max_depth": 30,
+            "n_estimators": 100, "max_depth": 20,
             "min_samples_leaf": 2,
             "max_features": 0.3,
         }
@@ -108,9 +109,14 @@ def train_hourly(use_grid_search: bool = True):
     print("全量训练（OOB 评估）")
     print(f"{'='*60}")
 
+    # 瘦身：减树+限深，控制模型体积
+    # 原 GridSearch 最优为 300棵/深度30=21GB 无法加载内存
+    # 瘦身策略：n_estimators 300->100, max_depth 30->20
+    # 预计模型体积 2-4GB，R2 下降约 1-2%
+    print("GridSearch 最优参数:", best_params)
     final_params = {
-        "n_estimators": best_params["n_estimators"],
-        "max_depth": best_params["max_depth"],
+        "n_estimators": 100,
+        "max_depth": 20,
         "min_samples_leaf": best_params["min_samples_leaf"],
         "max_features": best_params["max_features"],
         "random_state": config.RANDOM_SEED,
@@ -118,7 +124,7 @@ def train_hourly(use_grid_search: bool = True):
         "oob_score": True,
         "bootstrap": True,
     }
-    print(f"最终参数: {final_params}")
+    print("瘦身最终参数:", final_params)
 
     t0 = time.time()
     rf_final = RandomForestRegressor(**final_params)
