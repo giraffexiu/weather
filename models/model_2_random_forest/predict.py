@@ -4,11 +4,11 @@
 precipitation 输出时自动还原 log1p 变换
 供集成研判层 (Ensemble Layer) 调用
 """
-import pickle
 import json
 import numpy as np
 from pathlib import Path
 from typing import Optional
+import joblib
 
 import config
 
@@ -26,8 +26,7 @@ class RFPredictor:
             model_path = config.HOURLY_MODEL_PATH
         self.model_path = Path(model_path)
 
-        with open(self.model_path, "rb") as f:
-            saved = pickle.load(f)
+        saved = joblib.load(self.model_path)
 
         if isinstance(saved, dict):
             self.model = saved["model"]

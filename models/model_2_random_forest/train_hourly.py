@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import GridSearchCV, TimeSeriesSplit
+import joblib
 
 import config
 from data_loader import load_hourly, save_feature_config
@@ -139,8 +140,7 @@ def train_hourly(use_grid_search: bool = True):
         "use_log_precip": config.USE_LOG_TRANSFORM_PRECIP,
         "train_cutoff": config.TRAIN_CUTOFF,
     }
-    with open(config.HOURLY_MODEL_PATH, "wb") as f:
-        pickle.dump(saved, f)
+    joblib.dump(saved, config.HOURLY_MODEL_PATH, compress=3)
     print(f"模型已保存: {config.HOURLY_MODEL_PATH}")
 
     save_feature_config(feature_names, "hourly")
