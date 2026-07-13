@@ -13,8 +13,9 @@ from typing import Dict, Optional
 
 # 从 dataset_loader 获取特征配置，动态计算索引
 _HERE = Path(__file__).parent
-_PARENT = _HERE.parent
-sys.path.insert(0, str(_PARENT))
+_PROJ_ROOT = _HERE.parent.parent.parent  # weather/
+sys.path.insert(0, str(_PROJ_ROOT / "data" / "data_engineer" / "hourly_data"))
+sys.path.insert(0, str(_HERE.parent))  # model_3_deep_learning/
 from dataset_loader import feature_config as _fc
 
 # —— 构建 numerical 张量中各特征的索引映射 ——

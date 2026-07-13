@@ -11,8 +11,9 @@ import pandas as pd
 import torch
 
 _HERE = Path(__file__).parent
-_PARENT = _HERE.parent
-sys.path.insert(0, str(_PARENT))
+_PROJ_ROOT = _HERE.parent.parent.parent  # weather/
+sys.path.insert(0, str(_PROJ_ROOT / "data" / "data_engineer" / "hourly_data"))
+sys.path.insert(0, str(_HERE.parent))  # model_3_deep_learning/
 
 from dataset_loader import get_dataloader, config as dl_config
 from hourly_train.model import WideAndDeep, create_model

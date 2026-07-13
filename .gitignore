@@ -6,6 +6,9 @@ data/progress_checkpoint.json
 data/data_clean/cleaned_data/*.csv
 
 # 缓存文件和处理后的数据文件
+data/data_engineer/hourly_data/dataset_loader/cache/
+data/data_engineer/hourly_data/hourly_train/
+*.csv
 *.pkl
 data/data_engineer/daily_data/dataset_loader/cache/
 data/data_engineer/daily_data/processed_data/*.csv
