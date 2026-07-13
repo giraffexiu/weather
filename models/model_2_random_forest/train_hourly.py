@@ -58,12 +58,16 @@ def train_hourly(use_grid_search: bool = True):
     print(f"数据切分: train < {config.TRAIN_CUTOFF}, test >= {config.TEST_START}")
     print(f"log1p(precipitation): {config.USE_LOG_TRANSFORM_PRECIP}")
     print(f"lag 特征: {config.LAG_PERIODS_HOURLY}")
+    print(f"GridSearch: {'开启' if use_grid_search else '跳过(使用已知最优参数)'}")
     print("=" * 60)
 
-    # 1. 子采样数据粗搜参数
-    print(f"\n[阶段1] 子采样 {config.HOURLY_SUBSAMPLE_FRAC:.0%} 粗搜参数...")
-    X_sub, y_sub, _, _, feat_sub = load_hourly(
-        subset_frac=config.HOURLY_SUBSAMPLE_FRAC)
+    if use_grid_search:
+        # 子采样数据粗搜参数
+        print(f"\n[阶段1] 子采样 {config.HOURLY_SUBSAMPLE_FRAC:.0%} 粗搜参数...")
+        X_sub, y_sub, _, _, feat_sub = load_hourly(
+            subset_frac=config.HOURLY_SUBSAMPLE_FRAC)
+    else:
+        print(f"\n[阶段1] 跳过子采样和 GridSearch")
 
     if use_grid_search:
         print(f"\n{'='*60}")
@@ -83,11 +87,13 @@ def train_hourly(use_grid_search: bool = True):
         _print_grid_results(grid)
         best_params = grid.best_params_
     else:
+        print("\n跳过 GridSearch，使用上次搜索到的最优参数...")
         best_params = {
             "n_estimators": 300, "max_depth": 30,
-            "min_samples_leaf": 4,
-            "max_features": "log2",
+            "min_samples_leaf": 2,
+            "max_features": 0.3,
         }
+        print(f"最优参数: {best_params}")
 
     # 2. 全量训练集加载
     print(f"\n[阶段2] 加载全量训练集...")
@@ -155,7 +161,8 @@ def train_hourly(use_grid_search: bool = True):
 
 
 if __name__ == "__main__":
-    rf, res = train_hourly(use_grid_search=True)
+    use_grid = "--no-grid" not in sys.argv
+    rf, res = train_hourly(use_grid_search=use_grid)
     print(f"\n{'='*60}")
     print(f"小时级训练完成!")
     print(f"{'='*60}")
