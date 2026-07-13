@@ -22,18 +22,18 @@ CHECKPOINT_PATH = CHECKPOINT_DIR / "best_model.pth"
 
 # ==================== 模型配置 ====================
 MODEL_CONFIG = {
-    # Embedding维度
-    'city_embed_dim': 8,
-    'country_embed_dim': 8,
-    'season_embed_dim': 4,
+    # Embedding维度（减小以降低复杂度）
+    'city_embed_dim': 6,
+    'country_embed_dim': 6,
+    'season_embed_dim': 3,
     
-    # Wide侧维度 (实际14维)
-    'wide_dim': 14,
+    # Wide侧维度 (扩展以包含更多特征)
+    'wide_dim': 22,  # 修正：滞后6+滚动5+变化2+交叉7(1+1+4+1)=20，实际计算=6+5+2+1+1+4+1=20，应该是22
     
     # Deep侧维度
-    'deep_dim': 123,  # 20(embed) + 88(num) + 6(cyc) + 9(bin)
-    'hidden_dims': [128, 64, 32],
-    'dropout': 0.3,
+    'deep_dim': 118,  # 15(embed: 6+6+3) + 88(num: 22*4) + 6(cyc) + 9(bin) = 118
+    'hidden_dims': [64, 32],  # 简化网络：减少层数和节点数
+    'dropout': 0.4,  # 增加dropout以防止过拟合
     'use_batch_norm': True,
     
     # 输出目标数量（9个天气变量）
@@ -42,23 +42,23 @@ MODEL_CONFIG = {
 
 # ==================== 训练配置 ====================
 TRAIN_CONFIG = {
-    'batch_size': 64,
-    'epochs': 80,
-    'learning_rate': 0.001,
-    'weight_decay': 1e-4,
-    'grad_clip_norm': 1.0,
+    'batch_size': 128,  # 增大batch_size提高训练稳定性
+    'epochs': 50,  # 减少epoch数
+    'learning_rate': 0.0005,  # 降低学习率
+    'weight_decay': 1e-3,  # 增加正则化
+    'grad_clip_norm': 0.5,  # 更严格的梯度裁剪
     
     # 学习率调度
     'use_scheduler': True,
     'scheduler_type': 'cosine',  # 'cosine' or 'step'
-    'T_max': 80,
+    'T_max': 50,
     
     # 早停
     'early_stopping': True,
-    'patience': 15,
+    'patience': 8,  # 更早停止
     
     # 日志
-    'log_interval': 50,  # 每50个batch打印一次
+    'log_interval': 100,  # 每100个batch打印一次
     'eval_interval': 1,  # 每1个epoch评估一次
 }
 

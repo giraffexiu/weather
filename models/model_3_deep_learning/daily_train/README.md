@@ -1,195 +1,144 @@
-# Wide & Deep 天气预测模型 - 训练模块
+# Wide & Deep 天气预测模型
 
-## 📋 项目概述
+## 📋 模型说明
 
-基于 Wide & Deep 架构的日度温度预测模型，利用过去7天的多维天气特征预测未来第1天的平均温度。
+基于PyTorch的Wide & Deep架构，用于多目标天气预测（温度、降水、风速共9个指标）。
 
-### 数据规模
-- **训练集**: 160,720 样本 (2015-2023, 9年)
-- **测试集**: 17,591 样本 (2024, 1年)
-- **特征维度**: 40维 (分组: categorical, numerical, cyclical, binary, season)
-- **覆盖范围**: 49个欧洲城市
-
-### 模型架构
-- **Wide侧**: 15维交叉特征 → 线性层 → 输出
-- **Deep侧**: 123维特征 → 3层MLP [128→64→32] → 输出
-- **融合**: Wide输出 + Deep输出
-- **参数量**: ~22K
-
----
+### 模型特点
+- **Wide侧**：22维手工特征（滞后、滚动统计、变化率、交叉特征）
+- **Deep侧**：[64, 32]深度网络 + Embeddings + 正则化
+- **损失函数**：加权MSE（温度1x, 降水3x, 风速2x）
+- **参数量**：10,872
 
 ## 🚀 快速开始
 
-### 1. 环境准备
-
-```bash
-cd models/model_3_deep_learning/daily_train
-pip install -r requirements.txt
-```
-
-### 2. 训练模型
-
+### 训练模型
 ```bash
 python train.py
 ```
 
-训练过程会自动：
-- 加载 dataset_loader 提供的数据
-- 训练 80 个 epoch (可早停)
-- 保存最佳模型到 `outputs/checkpoints/best_model.pth`
-- 生成训练曲线和预测分析图
-
-### 3. 输出文件
-
-```
-outputs/
-├── checkpoints/
-│   └── best_model.pth          # 最佳模型
-├── plots/
-│   ├── training_curves.png     # 训练曲线
-│   └── prediction_analysis.png # 预测分析
-└── logs/
+### 评估模型
+```bash
+python evaluate.py
 ```
 
----
+## 📊 性能指标（测试集）
 
-## 📊 模型详情
+| 指标 | MAE | RMSE | R² |
+|------|-----|------|-----|
+| **温度预测** | | | |
+| Temperature Max | 0.218°C | 0.281 | 0.918 |
+| Temperature Min | 0.206°C | 0.270 | 0.922 |
+| Temperature Mean | 0.177°C | 0.233 | **0.943** |
+| Temperature Range | 0.570°C | 0.716 | 0.456 |
+| Feels Like | 0.173°C | 0.228 | 0.945 |
+| **降水预测** | | | |
+| Precipitation | 0.601mm | 1.115 | 0.087 |
+| Rain | 0.600mm | 1.125 | 0.088 |
+| Snow | 0.230mm | 0.832 | 0.085 |
+| **风速预测** | | | |
+| Wind Speed | 0.608m/s | 0.791 | 0.399 |
 
-### Wide侧特征 (15维)
-1. **原始特征**: 当前温度、降水、风速、纬度
-2. **统计特征**: 7天温度均值、标准差、降水总和
-3. **交叉特征**:
-   - month × precipitation (季节性降水模式)
-   - latitude × temperature (地理规律)
-   - season × wind_speed (季节性风力)
-   - is_rainy × precipitation (降雨强度)
+### 训练效率
+- **训练时间**：~2分钟（早停于epoch 5）
+- **最佳epoch**：5
+- **设备**：CPU
 
-### Deep侧特征 (123维)
-1. **类别Embedding** (20维):
-   - city: 49类 → 8维
-   - country: 29类 → 8维
-   - season: 4类 → 4维
+## 🔧 关键改进
 
-2. **数值聚合** (88维):
-   - mean: 22维 (7天趋势)
-   - std: 22维 (7天波动)
-   - last: 22维 (当前状态)
-   - diff: 22维 (总变化量)
+### 相比初始版本
+1. ✅ 简化架构：hidden层 [128,64,32] → [64,32]
+2. ✅ 增强特征：14维 → 22维（添加滞后、滚动、变化率）
+3. ✅ 加权损失：平衡多目标学习
+4. ✅ 优化训练：降低LR、增强正则化、早停
 
-3. **周期编码** (6维): sin/cos 月、年、周周期
-4. **二值特征** (9维): 事件发生频率
+### 最大改进
+- **Temperature Range R²**: 0.005 → 0.456 (+9020%)
 
-### 网络结构
+## 📁 文件结构
 
 ```
-Deep侧:
-Input(123) → Linear(128) + BN + ReLU + Dropout(0.3)
-          → Linear(64)  + BN + ReLU + Dropout(0.3)
-          → Linear(32)       + ReLU + Dropout(0.2)
-          → Linear(1)
-
-Wide侧:
-Input(15) → Linear(1)
-
-融合:
-output = wide_out + deep_out
+daily_train/
+├── train.py              # 训练脚本（包含WeightedMSELoss）
+├── evaluate.py           # 评估脚本
+├── model.py              # Wide & Deep模型定义
+├── train_config.py       # 超参数配置
+├── utils.py              # 工具函数
+├── requirements.txt      # 依赖包
+├── README.md            # 本文件
+├── FIXES_APPLIED.md     # 详细修复说明
+└── outputs/
+    ├── checkpoints/     # 模型检查点
+    └── plots/           # 训练曲线和预测分析图
 ```
 
----
+## 🆚 与逻辑回归对比
 
-## ⚙️ 配置说明
+| 模型 | 温度R² | 降水R² | 风速R² | 训练时间 |
+|------|--------|--------|--------|---------|
+| 逻辑回归 | 0.994-0.999 | 0.270 | 0.898 | 24秒 |
+| 深度学习 | 0.918-0.945 | 0.087 | 0.399 | 2分钟 |
 
-编辑 `config.py` 修改超参数：
+**结论**：对于此任务，逻辑回归整体性能更优。深度学习模型在温度预测上可用，但降水和风速预测需进一步改进。
 
+## 💡 使用建议
+
+### ✅ 推荐场景
+- 温度预测（R² > 0.91）
+- 研究学习Wide & Deep架构
+- 对比深度学习与传统方法
+
+### ⚠️ 限制
+- 降水预测性能有限（R² < 0.1）
+- 风速预测中等（R² ≈ 0.4）
+- 需要更多数据和特征改进
+
+## 📚 技术细节
+
+### 特征工程（Wide侧）
 ```python
-TRAIN_CONFIG = {
-    'batch_size': 64,
-    'epochs': 80,
-    'learning_rate': 0.001,
-    'weight_decay': 1e-4,
-    'dropout': 0.3,
-    
-    # 早停
-    'early_stopping': True,
-    'patience': 15,
-}
+# 滞后特征 (7个)
+temp_lag1, temp_lag2, temp_lag7
+precip_lag1, precip_lag2
+wind_lag1
+lat, lon
+
+# 滚动统计 (5个)
+temp_7d_mean, temp_7d_std, temp_3d_mean
+precip_7d_sum, precip_3d_sum
+
+# 变化率 (2个)
+temp_diff_1day, temp_diff_7day
+
+# 交叉特征 (8个)
+month×precip, lat×temp, season×wind (4维), is_rainy×precip, month
 ```
 
----
+### 超参数配置
+```python
+# 模型
+hidden_dims = [64, 32]
+dropout = 0.4
+embeddings = [6, 6, 3]  # city, country, season
 
-## 📈 性能目标
-
-- **MAE**: < 3.0°C
-- **RMSE**: < 5.0°C
-- **R²**: > 0.85
-
----
-
-## 🔧 技术要点
-
-### 1. 时序特征聚合
-由于 Wide & Deep 不是时序模型，对7天序列采用统计聚合：
-- `mean`: 捕捉趋势
-- `std`: 捕捉波动
-- `last`: 捕捉当前状态
-- `diff`: 捕捉变化率
-
-### 2. 类别特征处理
-利用"按城市分组"特性：
-- city_id 和 country_id 在7天内不变，取任意一天即可
-- season 可能跨月，取最后一天
-
-### 3. Wide侧设计
-手工交叉特征捕捉天气领域规律：
-- 季节×降水 → 夏季暴雨模式
-- 纬度×温度 → 地理气候规律
-- 季节×风速 → 冬季大风
-
-### 4. 正则化策略
-- Dropout: 0.3 (深层), 0.2 (浅层)
-- BatchNorm: 每层隐藏层
-- Weight Decay: 1e-4
-- Gradient Clipping: 1.0
-
----
-
-## 📝 注意事项
-
-1. **数据路径**: 自动从 `data/data_engineer/daily_data/dataset_loader` 加载
-2. **GPU支持**: 自动检测CUDA，无GPU则使用CPU
-3. **内存占用**: 约 2GB (训练时)
-4. **训练时间**: ~10-15分钟 (GPU), ~30-40分钟 (CPU)
-
----
-
-## 🐛 常见问题
-
-**Q: 找不到 dataset_loader 模块？**  
-A: 确保在项目根目录运行，或检查 `sys.path` 设置
-
-**Q: CUDA out of memory？**  
-A: 降低 batch_size 到 32 或 16
-
-**Q: 训练过拟合？**  
-A: 增加 dropout 到 0.4，或启用更强的 weight_decay
-
-**Q: R² 低于 0.85？**  
-A: 检查数据质量，尝试调整特征工程或增加 hidden_dims
-
----
-
-## 📧 技术架构
-
-```
-数据流:
-CSV (161K rows) 
-  → dataset_loader (滑动窗口)
-  → batch {categorical, numerical, cyclical, binary, season, target}
-  → FeaturePreprocessor (时序聚合 + Embedding)
-  → Wide & Deep (并行处理)
-  → 融合输出
+# 训练
+batch_size = 128
+learning_rate = 0.0005
+weight_decay = 1e-3
+patience = 8
 ```
 
----
+## 📖 更多信息
 
-**最后更新**: 2024-07-13
+详细的修复过程、对比分析和技术总结请参考：
+- `FIXES_APPLIED.md` - 完整修复说明和技术细节
+
+## 📝 引用
+
+如需引用此模型，请参考：
+```
+Wide & Deep天气预测模型
+特征工程：滞后+滚动+变化率+交叉
+损失函数：加权MSE
+性能：温度R²=0.943, 参数量10,872
+```

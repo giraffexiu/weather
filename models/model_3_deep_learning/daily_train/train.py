@@ -23,6 +23,32 @@ from utils import (
 )
 
 
+class WeightedMSELoss(nn.Module):
+    """加权MSE损失，对不同目标使用不同权重"""
+    def __init__(self):
+        super().__init__()
+        # 目标权重：温度(5) | 降水(3) | 风速(1)
+        # 降水和风速权重更高，因为它们更难预测
+        self.weights = torch.tensor([
+            1.0, 1.0, 1.0, 1.0, 1.0,  # 温度类（5个）
+            3.0, 3.0, 3.0,             # 降水类（3个）- 提高权重
+            2.0                        # 风速类（1个）- 提高权重
+        ])
+    
+    def forward(self, pred, target):
+        """
+        Args:
+            pred: (B, 9) 预测值
+            target: (B, 9) 目标值
+        Returns:
+            loss: 加权MSE损失
+        """
+        weights = self.weights.to(pred.device)
+        squared_error = (pred - target) ** 2  # (B, 9)
+        weighted_error = squared_error * weights.unsqueeze(0)  # (B, 9)
+        return weighted_error.mean()
+
+
 def train_one_epoch(model, train_loader, optimizer, criterion, device, log_interval):
     """训练一个epoch"""
     model.train()
@@ -112,7 +138,7 @@ def train_model(config):
     print(f"总参数: {total_params:,}, 可训练: {trainable_params:,}")
     
     # 优化器
-    criterion = nn.MSELoss()
+    criterion = WeightedMSELoss()  # 使用加权损失函数
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config['learning_rate'],

@@ -32,7 +32,7 @@ class FeaturePreprocessor(nn.Module):
         super().__init__()
         self.config = config
         
-        # Embedding层
+        # Embedding层（减小维度）
         self.city_embed = nn.Embedding(49, config['city_embed_dim'])
         self.country_embed = nn.Embedding(29, config['country_embed_dim'])
         self.season_embed = nn.Embedding(4, config['season_embed_dim'])
@@ -52,8 +52,8 @@ class FeaturePreprocessor(nn.Module):
             }
         
         Returns:
-            wide_input: (B, 15)
-            deep_input: (B, 123)
+            wide_input: (B, 25)
+            deep_input: (B, deep_dim)
         """
         B = batch['categorical'].size(0)
         
@@ -66,16 +66,16 @@ class FeaturePreprocessor(nn.Module):
         city_emb = self.city_embed(city_id)
         country_emb = self.country_embed(country_id)
         season_emb = self.season_embed(season_id)
-        cat_embeddings = torch.cat([city_emb, country_emb, season_emb], dim=1)  # (B, 20)
+        cat_embeddings = torch.cat([city_emb, country_emb, season_emb], dim=1)  # (B, 15)
         
-        # === 2. 数值特征聚合 ===
+        # === 2. 数值特征聚合（增强时序特征）===
         numerical = batch['numerical']  # (B, 7, 22)
         
-        num_mean = numerical.mean(dim=1)      # (B, 22) 趋势
-        num_std = numerical.std(dim=1)        # (B, 22) 波动
-        num_last = numerical[:, -1, :]        # (B, 22) 当前
-        num_first = numerical[:, 0, :]        # (B, 22) 初始
-        num_diff = num_last - num_first       # (B, 22) 变化
+        num_mean = numerical.mean(dim=1)      # (B, 22) 7天平均趋势
+        num_std = numerical.std(dim=1)        # (B, 22) 7天波动性
+        num_last = numerical[:, -1, :]        # (B, 22) 最近一天（Day 7）
+        num_first = numerical[:, 0, :]        # (B, 22) 7天前（Day 1）
+        num_diff = num_last - num_first       # (B, 22) 7天变化
         
         num_features = torch.cat([num_mean, num_std, num_last, num_diff], dim=1)  # (B, 88)
         
@@ -83,7 +83,7 @@ class FeaturePreprocessor(nn.Module):
         cyc_mean = batch['cyclical'].mean(dim=1)  # (B, 6)
         bin_mean = batch['binary'].mean(dim=1)    # (B, 9)
         
-        # === 4. Wide侧特征 ===
+        # === 4. Wide侧特征（增强滞后特征）===
         wide_input = self._create_wide_features(numerical, season_id, batch['binary'])
         
         # === 5. Deep侧特征 ===
@@ -92,48 +92,83 @@ class FeaturePreprocessor(nn.Module):
         return wide_input, deep_input
     
     def _create_wide_features(self, numerical, season_id, binary):
-        """构造Wide侧交叉特征"""
+        """构造Wide侧交叉特征（增强版）"""
         B = numerical.size(0)
         idx = self.num_idx
         bin_idx = self.bin_idx
         
-        last_day = numerical[:, -1, :]
+        # 提取关键时序数据
+        temp_seq = numerical[:, :, idx['temperature_2m_mean']]  # (B, 7)
+        precip_seq = numerical[:, :, idx['precipitation_sum']]  # (B, 7)
+        wind_seq = numerical[:, :, idx['wind_speed_10m_max']]   # (B, 7)
         
-        # 关键特征
-        temp_mean = last_day[:, idx['temperature_2m_mean']]
-        precip = last_day[:, idx['precipitation_sum']]
-        wind = last_day[:, idx['wind_speed_10m_max']]
+        # 滞后特征（多个时间点）
+        temp_lag1 = temp_seq[:, -1]  # Day 7
+        temp_lag2 = temp_seq[:, -2]  # Day 6
+        temp_lag7 = temp_seq[:, 0]   # Day 1
+        
+        precip_lag1 = precip_seq[:, -1]
+        precip_lag2 = precip_seq[:, -2]
+        
+        wind_lag1 = wind_seq[:, -1]
+        
+        # 滚动统计特征
+        temp_7d_mean = temp_seq.mean(dim=1)
+        temp_7d_std = temp_seq.std(dim=1)
+        temp_3d_mean = temp_seq[:, -3:].mean(dim=1)  # 最近3天平均
+        
+        precip_7d_sum = precip_seq.sum(dim=1)
+        precip_3d_sum = precip_seq[:, -3:].sum(dim=1)
+        
+        # 变化率特征
+        temp_diff_1day = temp_lag1 - temp_lag2
+        temp_diff_7day = temp_lag1 - temp_lag7
+        
+        # 地理和时间特征
+        last_day = numerical[:, -1, :]
         lat = last_day[:, idx['latitude']]
+        lon = last_day[:, idx['longitude']]
         month = last_day[:, idx['month']]
         
-        # 7天统计
-        temp_7d_mean = numerical[:, :, idx['temperature_2m_mean']].mean(dim=1)
-        temp_7d_std = numerical[:, :, idx['temperature_2m_mean']].std(dim=1)
-        precip_7d_sum = numerical[:, :, idx['precipitation_sum']].sum(dim=1)
-        
         # 交叉特征
-        cross_month_precip = month * precip
-        cross_lat_temp = lat * temp_mean
+        cross_month_precip = month * precip_lag1
+        cross_lat_temp = lat * temp_lag1
         
         season_onehot = F.one_hot(season_id, 4).float()
-        cross_season_wind = season_onehot * wind.unsqueeze(1)  # (B, 4)
+        cross_season_wind = season_onehot * wind_lag1.unsqueeze(1)  # (B, 4)
         
         is_rainy = binary[:, -1, bin_idx['is_rainy']]
-        cross_rain_precip = is_rainy * precip
+        cross_rain_precip = is_rainy * precip_lag1
         
+        # 组合所有Wide特征
         wide_features = torch.cat([
-            temp_mean.unsqueeze(1),       # 1
-            precip.unsqueeze(1),          # 2
-            wind.unsqueeze(1),            # 3
-            lat.unsqueeze(1),             # 4
-            temp_7d_mean.unsqueeze(1),    # 5
-            temp_7d_std.unsqueeze(1),     # 6
-            precip_7d_sum.unsqueeze(1),   # 7
-            cross_month_precip.unsqueeze(1),  # 8
-            cross_lat_temp.unsqueeze(1),      # 9
-            cross_season_wind,            # 10-13 (4维)
-            cross_rain_precip.unsqueeze(1),   # 14
-        ], dim=1)  # 总计14维
+            # 滞后特征 (7个) - 增加lon
+            temp_lag1.unsqueeze(1),      # 1
+            temp_lag2.unsqueeze(1),      # 2
+            precip_lag1.unsqueeze(1),    # 3
+            precip_lag2.unsqueeze(1),    # 4
+            wind_lag1.unsqueeze(1),      # 5
+            lat.unsqueeze(1),            # 6
+            lon.unsqueeze(1),            # 7
+            
+            # 滚动统计 (5个)
+            temp_7d_mean.unsqueeze(1),   # 8
+            temp_7d_std.unsqueeze(1),    # 9
+            temp_3d_mean.unsqueeze(1),   # 10
+            precip_7d_sum.unsqueeze(1),  # 11
+            precip_3d_sum.unsqueeze(1),  # 12
+            
+            # 变化率 (2个)
+            temp_diff_1day.unsqueeze(1), # 13
+            temp_diff_7day.unsqueeze(1), # 14
+            
+            # 交叉特征 (8个)
+            cross_month_precip.unsqueeze(1),  # 15
+            cross_lat_temp.unsqueeze(1),      # 16
+            cross_season_wind,                # 17-20 (4维)
+            cross_rain_precip.unsqueeze(1),   # 21
+            month.unsqueeze(1),               # 22 - 添加month本身
+        ], dim=1)  # 总计22维
         
         return wide_features
 
