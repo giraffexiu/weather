@@ -57,3 +57,5 @@ wheels/
 
 # 资源文件夹
 resource/
+#忽略node_modules
+node_modules/
