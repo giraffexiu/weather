@@ -134,6 +134,46 @@ class Model1Wrapper(BaseModelWrapper):
         
         return X
     
+    def prepare_features_from_loader(self, data_loader) -> np.ndarray:
+        """
+        从DataLoader准备特征矩阵
+        
+        Args:
+            data_loader: PyTorch DataLoader
+            
+        Returns:
+            特征矩阵 (N, num_features)
+        """
+        all_features = []
+        
+        for batch in data_loader:
+            # 从batch中提取各组特征并合并
+            # DataLoader返回的是时序数据，需要提取当前时刻的特征
+            batch_features = []
+            
+            for group_name in ['categorical', 'numerical', 'cyclical', 'binary']:
+                if group_name in batch:
+                    group_data = batch[group_name]  # (B, seq_length, n_features)
+                    # 取最后一个时间步的特征
+                    last_step = group_data[:, -1, :]  # (B, n_features)
+                    batch_features.append(last_step.cpu().numpy())
+            
+            # 合并所有特征组
+            if batch_features:
+                combined = np.concatenate(batch_features, axis=1)  # (B, total_features)
+                all_features.append(combined)
+        
+        # 合并所有批次
+        X = np.concatenate(all_features, axis=0)  # (N, total_features)
+        
+        # 处理缺失值
+        if np.isnan(X).any():
+            n_missing = np.isnan(X).sum()
+            print(f"  ⚠ 检测到 {n_missing} 个缺失值，填充为0")
+            X = np.nan_to_num(X, 0.0)
+        
+        return X
+    
     def predict(self, X: np.ndarray) -> Dict[str, np.ndarray]:
         """
         执行预测
@@ -304,38 +344,5 @@ class Model3Wrapper(BaseModelWrapper):
         return results
 
 
-def test_model_wrappers():
-    """测试模型包装器"""
-    print("="*70)
-    print("测试 Model 1 包装器")
-    print("="*70)
-    
-    # 测试 Model 1
-    try:
-        model1 = Model1Wrapper()
-        print("\n✅ Model 1 包装器测试通过")
-    except Exception as e:
-        print(f"\n❌ Model 1 包装器测试失败: {e}")
-        return
-    
-    print("\n" + "="*70)
-    print("测试 Model 3 包装器")
-    print("="*70)
-    
-    # 测试 Model 3
-    try:
-        from config import PROBABILITY_CONVERSION_CONFIG
-        converter = ProbabilityConverter(PROBABILITY_CONVERSION_CONFIG)
-        model3 = Model3Wrapper(probability_converter=converter)
-        print("\n✅ Model 3 包装器测试通过")
-    except Exception as e:
-        print(f"\n❌ Model 3 包装器测试失败: {e}")
-        return
-    
-    print("\n" + "="*70)
-    print("✅ 所有包装器测试通过")
-    print("="*70)
-
-
 if __name__ == "__main__":
-    test_model_wrappers()
+    print("Model wrappers module")

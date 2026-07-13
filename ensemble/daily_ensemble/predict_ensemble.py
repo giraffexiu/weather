@@ -79,22 +79,23 @@ def predict(
     print("准备输入数据")
     print("="*70)
     
-    print("\n准备 Model 1 输入...")
-    X_model1 = model1.prepare_features(test_df)
-    print(f"  特征矩阵: {X_model1.shape}")
-    
-    print("\n准备 Model 3 输入...")
+    print("\n准备 Model 1 DataLoader...")
     from dataset_loader import get_dataloaders
-    loaders = get_dataloaders(batch_size=batch_size)
-    test_loader = loaders['test']
-    print(f"  批次数: {len(test_loader)}")
+    loaders_model1 = get_dataloaders(batch_size=batch_size)
+    test_loader_model1 = loaders_model1['test']
+    print(f"  批次数: {len(test_loader_model1)}")
+    
+    print("\n准备 Model 3 DataLoader...")
+    loaders_model3 = get_dataloaders(batch_size=batch_size)
+    test_loader_model3 = loaders_model3['test']
+    print(f"  批次数: {len(test_loader_model3)}")
     
     # 执行预测
     print("\n" + "="*70)
     print("执行集成预测")
     print("="*70)
     
-    result_df = ensemble.predict_with_dataframe(test_df, test_loader)
+    result_df = ensemble.predict_with_dataframe(test_df, test_loader_model1, test_loader_model3)
     
     print(f"\n预测完成！共 {len(result_df)} 个样本")
     

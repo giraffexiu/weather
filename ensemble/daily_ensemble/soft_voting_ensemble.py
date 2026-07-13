@@ -250,14 +250,14 @@ class SoftVotingEnsemble:
     
     def predict(
         self,
-        X_model1: np.ndarray,
+        data_loader_model1,
         data_loader_model3
     ) -> Dict[str, Any]:
         """
         执行集成预测
         
         Args:
-            X_model1: Model 1 的输入特征矩阵 (N, num_features)
+            data_loader_model1: Model 1 的 DataLoader
             data_loader_model3: Model 3 的 DataLoader
             
         Returns:
@@ -282,8 +282,13 @@ class SoftVotingEnsemble:
         if self.verbose:
             print("\n执行集成预测...")
         
-        # Model 1 预测
+        # Model 1 预测 - 使用 DataLoader
         if self.verbose:
+            print("  Model 1 从 DataLoader 准备特征...")
+        X_model1 = self.model1.prepare_features_from_loader(data_loader_model1)
+        
+        if self.verbose:
+            print(f"    特征矩阵: {X_model1.shape}")
             print("  Model 1 预测中...")
         model1_results = self.model1.predict(X_model1)
         
@@ -323,23 +328,22 @@ class SoftVotingEnsemble:
     def predict_with_dataframe(
         self,
         test_df: pd.DataFrame,
+        data_loader_model1,
         data_loader_model3
     ) -> pd.DataFrame:
         """
-        使用 DataFrame 执行预测并返回结果
+        使用 DataFrame 和 DataLoader 执行预测并返回结果
         
         Args:
-            test_df: 测试数据 DataFrame
+            test_df: 测试数据 DataFrame（用于获取元数据）
+            data_loader_model1: Model 1 的 DataLoader
             data_loader_model3: Model 3 的 DataLoader
             
         Returns:
             包含预测结果的 DataFrame
         """
-        # 准备 Model 1 的输入
-        X_model1 = self.model1.prepare_features(test_df)
-        
         # 执行预测
-        predictions = self.predict(X_model1, data_loader_model3)
+        predictions = self.predict(data_loader_model1, data_loader_model3)
         
         # 构建结果 DataFrame
         result_df = test_df[['time', 'city', 'country']].copy()
@@ -357,5 +361,4 @@ class SoftVotingEnsemble:
 
 
 if __name__ == "__main__":
-    print("软投票集成模块已加载")
-    print("请使用 predict_ensemble.py 进行实际预测")
+    print("Soft voting ensemble module")
