@@ -19,7 +19,7 @@ DATA_ROOT = PROJECT_ROOT / "data"
 HOURLY_TRAIN_PATH = DATA_ROOT / "data_engineer" / "hourly_data" / "processed_data" / "train_features.csv"
 HOURLY_TEST_PATH = DATA_ROOT / "data_engineer" / "hourly_data" / "processed_data" / "test_features.csv"
 
-# 日级标签来源（小时级清洗数据，含 weather_code）
+# 小时级清洗数据（含 weather_code）
 HOURLY_CLEANED_PATH = DATA_ROOT / "data_clean" / "cleaned_data" / "weather_hourly_cleaned.csv"
 
 # 模型保存路径
