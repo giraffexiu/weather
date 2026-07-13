@@ -44,6 +44,8 @@ REGRESSION_TARGETS = {
     'temp_mean': 'temperature_2m_mean',
     'temp_max': 'temperature_2m_max',
     'temp_min': 'temperature_2m_min',
+    'temp_range': 'temperature_range',           # 温度范围 (max - min)
+    'temp_feels': 'feels_like_temperature',      # 体感温度
     'precipitation': 'precipitation_sum',
     'wind': 'wind_speed_10m_max',
 }
