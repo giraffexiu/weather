@@ -1,6 +1,12 @@
 """
 随机森林模型配置 (Model 2: Random Forest)
-双粒度天气分类：日级 + 小时级，均为 6 类天气分类
+双粒度多目标回归：日级 + 小时级，均为 5 变量连续值预测
+预测目标与 model_3 (Deep Learning) 统一：
+  - temperature_2m (温度)
+  - precipitation (降水量)
+  - wind_speed_10m (风速)
+  - apparent_temperature (体感温度)
+  - relative_humidity_2m (相对湿度)
 """
 import os
 from pathlib import Path
@@ -33,32 +39,35 @@ HOURLY_OUTPUT_DIR = OUTPUT_DIR / "hourly"
 DAILY_OUTPUT_DIR.mkdir(exist_ok=True)
 HOURLY_OUTPUT_DIR.mkdir(exist_ok=True)
 
-# ==================== 6 类天气定义 ====================
-WEATHER_CATEGORIES = ["Clear", "Cloudy", "Overcast", "Drizzle", "Rain", "Snow"]
+# ==================== 多目标回归目标列 ====================
+# 小时级：直接从特征数据中取这 5 列作为回归目标
+HOURLY_TARGET_COLUMNS = [
+    "temperature_2m",
+    "precipitation",
+    "wind_speed_10m",
+    "apparent_temperature",
+    "relative_humidity_2m",
+]
 
-# WMO weather_code -> category 映射
-WMO_TO_CATEGORY = {
-    0: "Clear",
-    1: "Cloudy",
-    2: "Cloudy",
-    3: "Overcast",
-    51: "Drizzle", 53: "Drizzle", 55: "Drizzle",
-    61: "Rain", 63: "Rain", 65: "Rain",
-    71: "Snow", 73: "Snow", 75: "Snow",
-}
-
-# 日级标签聚合策略：当天最严重天气（优先级从高到低）
-DAILY_PRIORITY = ["Snow", "Rain", "Drizzle", "Overcast", "Cloudy", "Clear"]
+# 日级：日级数据列名与小时级不同，使用对应聚合列
+DAILY_TARGET_COLUMNS = [
+    "temperature_2m_mean",
+    "precipitation_sum",
+    "wind_speed_10m_max",
+    "feels_like_temperature",
+    "humidity_mean",          # 从小时级聚合而来 (_aggregate_hourly_to_daily_features)
+]
 
 # ==================== 随机种子 ====================
 RANDOM_SEED = 42
 
 # ==================== 排除列（不作为特征使用） ====================
-# 这些列是标识/时间/标签列，不能作为特征
+# 这些列是标识/时间/目标列，不能作为特征
 # season 和 day_period 是字符串列，由 data_loader._encode_categorical 编码为整数后保留为特征
 EXCLUDE_COLS_BASE = [
     "city", "country", "time", "weather_code", "weather_code_id",
-    "target",  # 标签列
+    "target_temperature_2m", "target_precipitation", "target_wind_speed_10m",
+    "target_apparent_temperature", "target_relative_humidity_2m",
 ]
 
 # 日级数据独有的排除列
@@ -74,8 +83,7 @@ LAG_PERIODS_DAILY = [1, 2, 3, 7, 14, 30]
 LAG_COLS_HOURLY = ["temperature_2m", "pressure_msl", "relative_humidity_2m",
                    "precipitation", "cloud_cover", "wind_speed_10m"]
 LAG_COLS_DAILY = ["temperature_2m_mean", "precipitation_sum", "wind_speed_10m_max",
-                  "pressure_mean", "humidity_mean", "cloud_cover_mean",
-                  "today_weather_cat"]
+                  "pressure_mean", "humidity_mean", "cloud_cover_mean"]
 
 # 多尺度滑动窗口
 ROLLING_WINDOWS_HOURLY = [3, 7, 12, 24]   # 短期变化 + 半日 + 全天
@@ -112,31 +120,20 @@ PARAM_GRID = {
     "max_features": ["log2", 0.3, 0.5],
 }
 
-# 固定参数
+# 固定参数（回归专用：无 class_weight）
 RF_FIXED_PARAMS = {
     "random_state": RANDOM_SEED,
     "n_jobs": -1,
-    "class_weight": "balanced",
     "oob_score": True,
     "bootstrap": True,
 }
 
-# 小时级少数类手动加权（Rain/Snow 仅 1.7%）
-HOURLY_CLASS_WEIGHT = {
-    "Clear": 1, "Cloudy": 1, "Overcast": 1,
-    "Drizzle": 1, "Rain": 5, "Snow": 5,
-}
-
-# 日级使用 balanced 即可（少数类占比尚可 7%~15%）
-DAILY_CLASS_WEIGHT = "balanced"
-
 # ==================== 交叉验证 ====================
 CV_SPLITS = 5
-CV_SCORING = "f1_macro"
+CV_SCORING = "neg_mean_squared_error"
 
 # ==================== 小时级子采样比例（386万行太慢） ====================
 HOURLY_SUBSAMPLE_FRAC = 0.1  # 先用 10% 子样本粗搜参数
-HOURLY_FULL_N_ESTIMATORS = 500  # 全量训练树数（不再限制）
 
 # ==================== OOB 曲线配置 ====================
 OOB_N_ESTIMATORS_RANGE = list(range(50, 801, 50))

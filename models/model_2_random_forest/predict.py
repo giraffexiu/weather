@@ -1,5 +1,6 @@
 """
 统一推理接口 (Predict) — 仅小时级
+多目标回归：预测下一小时的 5 个气象变量值
 供集成研判层 (Ensemble Layer) 调用
 """
 import pickle
@@ -12,7 +13,7 @@ import config
 
 
 class RFPredictor:
-    """随机森林预测器（小时级） - 供集成层调用"""
+    """随机森林回归预测器（小时级） - 供集成层调用"""
 
     def __init__(self, model_path: Optional[str] = None):
         """
@@ -30,50 +31,41 @@ class RFPredictor:
         if isinstance(saved, dict):
             self.model = saved["model"]
             self.feature_names = saved.get("feature_names", [])
-            self.label_encoder = saved.get("label_encoder", None)
-            self.classes = saved.get("classes", config.WEATHER_CATEGORIES)
+            self.target_columns = saved.get("target_columns", config.HOURLY_TARGET_COLUMNS)
+            self.oob_score = saved.get("oob_score", None)
         else:
             self.model = saved
             self.feature_names = []
-            self.label_encoder = None
-            self.classes = list(self.model.classes_)
-
-    def predict_proba(self, X) -> np.ndarray:
-        """返回概率输出 [n_samples, 6] — 供软投票/Stacking使用"""
-        return self.model.predict_proba(X)
+            self.target_columns = config.HOURLY_TARGET_COLUMNS
+            self.oob_score = getattr(self.model, "oob_score_", 0.0)
 
     def predict(self, X) -> np.ndarray:
-        """返回类别预测 [n_samples]（类别名字符串）"""
+        """返回回归预测值 [n_samples, n_targets]"""
         return self.model.predict(X)
 
     def predict_hourly(self, X) -> dict:
         """
-        小时级预测接口：返回预测类别 + 概率 + 置信度
+        小时级预测接口：返回预测值 + 置信度参考
 
         Args:
             X: 特征矩阵 [n_samples, n_features]
 
         Returns:
             {
-                "prediction": 类别名列表,
-                "probabilities": [n, 6] 概率矩阵,
-                "confidence": 每条样本最大概率,
-                "classes": 类别列表,
+                "prediction": [n_samples, 5] 预测值,
+                "target_columns": 目标列名列表,
+                "oob_score": OOB 分数,
             }
         """
-        proba = self.predict_proba(X)
         preds = self.predict(X)
-        confidence = np.max(proba, axis=1)
-
         return {
             "prediction": preds.tolist() if hasattr(preds, 'tolist') else list(preds),
-            "probabilities": proba.tolist() if hasattr(proba, 'tolist') else list(proba),
-            "confidence": confidence.tolist() if hasattr(confidence, 'tolist') else list(confidence),
-            "classes": self.classes,
+            "target_columns": self.target_columns,
+            "oob_score": self.oob_score,
         }
 
     def get_feature_importance(self) -> dict:
-        """返回特征重要性字典 — 供可解释性展示"""
+        """返回特征重要性字典"""
         names = self.feature_names or [f"f{i}" for i in range(len(self.model.feature_importances_))]
         return dict(zip(names, self.model.feature_importances_))
 
@@ -84,33 +76,32 @@ class RFPredictor:
 
     def get_oob_score(self) -> float:
         """返回 OOB 分数"""
-        return getattr(self.model, "oob_score_", 0.0)
+        return self.oob_score
 
     def get_weight(self) -> float:
         """返回模型权重参考值（OOB Score），供加权平均策略使用"""
         return self.get_oob_score()
 
-    def get_max_confidence(self, X) -> np.ndarray:
-        """返回每条样本的最大概率（供兜底层检查阈值）"""
-        return np.max(self.predict_proba(X), axis=1)
+    def get_target_columns(self) -> list:
+        """返回目标列名列表"""
+        return self.target_columns
 
-    def get_classes(self) -> list:
-        """返回类别列表"""
-        return self.classes
-
-    def is_fallback_needed(self, X, threshold: float = 0.55) -> np.ndarray:
+    def is_fallback_needed(self, X, threshold: float = 0.3) -> np.ndarray:
         """
         判断是否需要触发兜底方案
-        当所有样本的最大概率都低于阈值时返回 True
+        当 OOB Score 低于阈值，或输入特征存在大量缺失时返回 True
+        回归任务没有概率输出，用 OOB Score 作为模型整体置信度参考
 
         Args:
             X: 特征矩阵
-            threshold: 置信度阈值（默认 0.55）
+            threshold: OOB 阈值（默认 0.3）
 
         Returns:
             布尔数组，True 表示该样本需要兜底
         """
-        return self.get_max_confidence(X) < threshold
+        if self.oob_score < threshold:
+            return np.ones(len(X), dtype=bool)
+        return np.zeros(len(X), dtype=bool)
 
 
 if __name__ == "__main__":
@@ -124,7 +115,7 @@ if __name__ == "__main__":
         sys.exit(1)
     predictor = RFPredictor(model_path=path)
     print(f"模型加载成功: hourly")
-    print(f"类别: {predictor.get_classes()}")
+    print(f"目标变量: {predictor.get_target_columns()}")
     print(f"OOB Score: {predictor.get_oob_score():.4f}")
     print(f"特征数: {len(predictor.get_feature_importance())}")
     print(f"Top-5 特征:")

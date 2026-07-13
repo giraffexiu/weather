@@ -1,6 +1,6 @@
 """
 可视化与辅助函数模块 (Utils)
-混淆矩阵、特征重要性、OOB 误差曲线、概率分布
+特征重要性、OOB 误差曲线（多目标回归版）
 """
 import numpy as np
 import pandas as pd
@@ -12,36 +12,6 @@ from pathlib import Path
 from typing import List, Optional
 
 import config
-
-
-def plot_confusion_matrix(y_true, y_pred, classes: List[str],
-                          output_path: Path, title: str = "Confusion Matrix",
-                          normalize: bool = True):
-    """绘制混淆矩阵（标注绝对值 + 归一化百分比）"""
-    from sklearn.metrics import confusion_matrix
-
-    cm = confusion_matrix(y_true, y_pred, labels=classes)
-    cm_norm = cm.astype(float) / cm.sum(axis=1, keepdims=True)
-    cm_norm = np.nan_to_num(cm_norm)
-
-    annotations = np.empty(cm.shape, dtype=object)
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            count = cm[i, j]
-            pct = cm_norm[i, j] * 100
-            annotations[i, j] = f"{count:,}\n({pct:.1f}%)"
-
-    fig, ax = plt.subplots(figsize=(9, 7))
-    sns.heatmap(cm_norm, annot=annotations, fmt="", cmap="Blues",
-                xticklabels=classes, yticklabels=classes, ax=ax,
-                square=True, linewidths=0.5, linecolor="gray")
-    ax.set_xlabel("Predicted", fontsize=12)
-    ax.set_ylabel("Actual", fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight="bold")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  混淆矩阵已保存: {output_path}")
 
 
 def plot_feature_importance(importances: np.ndarray, feature_names: List[str],
@@ -75,16 +45,16 @@ def plot_oob_error_curve(X_train, y_train, output_path: Path,
                           fixed_params: dict, n_estimators_range: List[int],
                           title: str = "OOB Error Curve"):
     """
-    绘制 OOB 误差曲线：X=n_estimators, Y=OOB 错误率
+    绘制 OOB 误差曲线：X=n_estimators, Y=1-OOB R²
     用于判断模型何时收敛、最优树数量
     """
-    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.ensemble import RandomForestRegressor
 
     oob_errors = []
     for n_est in n_estimators_range:
         params = {**fixed_params, "n_estimators": n_est, "oob_score": True,
                   "bootstrap": True}
-        rf = RandomForestClassifier(**params)
+        rf = RandomForestRegressor(**params)
         rf.fit(X_train, y_train)
         oob_err = 1 - rf.oob_score_
         oob_errors.append(oob_err)
@@ -94,7 +64,7 @@ def plot_oob_error_curve(X_train, y_train, output_path: Path,
     ax.plot(n_estimators_range, oob_errors, "o-", color="steelblue",
             linewidth=2, markersize=6)
     ax.set_xlabel("n_estimators", fontsize=12)
-    ax.set_ylabel("OOB Error Rate", fontsize=12)
+    ax.set_ylabel("OOB Error (1 - R²)", fontsize=12)
     ax.set_title(title, fontsize=14, fontweight="bold")
     ax.grid(True, alpha=0.3)
 
@@ -111,27 +81,3 @@ def plot_oob_error_curve(X_train, y_train, output_path: Path,
     plt.close()
     print(f"  OOB 误差曲线已保存: {output_path}")
     return best_n
-
-
-def plot_probability_distribution(y_true, y_proba, classes: List[str],
-                                  output_path: Path,
-                                  title: str = "Probability Distribution"):
-    """绘制预测概率分布直方图（按真实标签着色）"""
-    max_proba = np.max(y_proba, axis=1)
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    for cls in classes:
-        mask = (y_true == cls)
-        if mask.sum() > 0:
-            ax.hist(max_proba[mask], bins=50, alpha=0.5, label=cls, density=True)
-
-    ax.set_xlabel("Max Predicted Probability", fontsize=12)
-    ax.set_ylabel("Density", fontsize=12)
-    ax.set_title(title, fontsize=14, fontweight="bold")
-    ax.legend(fontsize=9)
-    ax.axvline(0.55, color="red", linestyle="--", alpha=0.5,
-               label="Fallback threshold (0.55)")
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
-    print(f"  概率分布图已保存: {output_path}")
