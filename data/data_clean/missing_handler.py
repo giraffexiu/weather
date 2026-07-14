@@ -28,7 +28,7 @@ def fill_missing(df, config):
         elif any(x in col for x in ['precipitation', 'rain', 'snowfall']):
             df[col] = df[col].fillna(0)
         elif any(x in col for x in ['wind', 'pressure', 'humidity']):
-            df[col] = df[col].ffill().bfill()
+            df[col] = df[col].fillna(method='ffill').fillna(method='bfill')
         else:
             df[col] = df[col].interpolate(method='linear', limit_direction='both')
     

@@ -139,9 +139,8 @@ DAILY_VARIABLES = [
 # API配置
 BASE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-# 输出目录 - 分别输出到 dataset 下的 daily_data 和 hour_data 子目录
-HOURLY_OUTPUT_DIR = "../dataset/hour_data/"
-DAILY_OUTPUT_DIR = "../dataset/daily_data/"
+# 输出目录
+OUTPUT_DIR = "../"  # 输出到data目录
 
 # 请求配置 - 避免429错误
 REQUEST_DELAY = 20  # 每次请求间隔20秒（大幅增加！）
@@ -258,11 +257,10 @@ def main():
     print()
     
     # 确保输出目录存在
-    os.makedirs(HOURLY_OUTPUT_DIR, exist_ok=True)
-    os.makedirs(DAILY_OUTPUT_DIR, exist_ok=True)
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
     
     # 检查点文件
-    checkpoint_file = os.path.join(HOURLY_OUTPUT_DIR, "progress_checkpoint.json")
+    checkpoint_file = os.path.join(OUTPUT_DIR, "progress_checkpoint.json")
     completed_cities = load_checkpoint(checkpoint_file)
     
     if completed_cities:
@@ -294,14 +292,14 @@ def main():
         if hourly_df is not None or daily_df is not None:
             # 保存hourly数据
             if hourly_df is not None:
-                hourly_file = os.path.join(HOURLY_OUTPUT_DIR, f"weather_hourly_{city_name}_{START_DATE}_to_{END_DATE}.csv")
+                hourly_file = os.path.join(OUTPUT_DIR, f"weather_hourly_{city_name}_{START_DATE}_to_{END_DATE}.csv")
                 hourly_df.to_csv(hourly_file, index=False, encoding="utf-8")
                 hourly_size = os.path.getsize(hourly_file) / (1024*1024)
                 print(f"  ✓ 小时级数据已保存: {hourly_file} ({hourly_size:.2f} MB)")
             
             # 保存daily数据
             if daily_df is not None:
-                daily_file = os.path.join(DAILY_OUTPUT_DIR, f"weather_daily_{city_name}_{START_DATE}_to_{END_DATE}.csv")
+                daily_file = os.path.join(OUTPUT_DIR, f"weather_daily_{city_name}_{START_DATE}_to_{END_DATE}.csv")
                 daily_df.to_csv(daily_file, index=False, encoding="utf-8")
                 daily_size = os.path.getsize(daily_file) / (1024*1024)
                 print(f"  ✓ 每日数据已保存: {daily_file} ({daily_size:.2f} MB)")
@@ -328,8 +326,7 @@ def main():
     print(f"❌ 失败: {fail_count} 个城市")
     print(f"⏱ 总耗时: {datetime.now() - start_time}")
     print()
-    print(f"📁 小时数据保存在: {os.path.abspath(HOURLY_OUTPUT_DIR)}")
-    print(f"📁 每日数据保存在: {os.path.abspath(DAILY_OUTPUT_DIR)}")
+    print(f"📁 数据文件保存在: {os.path.abspath(OUTPUT_DIR)}")
     print(f"   - weather_hourly_<城市名>_*.csv")
     print(f"   - weather_daily_<城市名>_*.csv")
     print("=" * 80)

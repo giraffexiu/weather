@@ -1,0 +1,24 @@
+{
+  "round": 3,
+  "granularity": "hourly",
+  "method": "Enhanced features (131 cols) + known best params + 500 trees",
+  "params": {
+    "max_depth": 20,
+    "max_features": "log2",
+    "min_samples_leaf": 2,
+    "n_estimators": 500
+  },
+  "n_estimators_actual": 500,
+  "cv_score": 0.3273,
+  "accuracy": 0.7106905783206079,
+  "macro_f1": 0.6536009755188228,
+  "weighted_f1": 0.7115579332384405,
+  "cohen_kappa": 0.6043908891677567,
+  "oob_score": 0.7371247890328125,
+  "log_loss": 0.7528129586959104,
+  "rain_recall": 0.5817911082748352,
+  "snow_recall": 0.7194606560676192,
+  "cloudy_recall": 0.5054561383166493,
+  "num_features": 131,
+  "elapsed_sec": 3042.5
+}

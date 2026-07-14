@@ -1,0 +1,8 @@
+Hourly Ensemble Evaluation (N=430,392)
+=======================================================
+Target                            MSE      MAE       R²
+  temperature_2m               0.6272   0.5947   0.9908
+  precipitation                0.1583   0.1047   0.3943
+  wind_speed_10m               4.7879   1.6059   0.9113
+  apparent_temperature         1.0063   0.7542   0.9899
+  relative_humidity_2m        13.3057   2.6459   0.9530

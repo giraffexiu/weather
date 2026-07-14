@@ -1,0 +1,68 @@
+{
+  "granularity": "hourly",
+  "overall_rmse": 0.3336842773624725,
+  "overall_mae": 0.14045694337711012,
+  "overall_r2": 0.8388217866027865,
+  "oob_score": 0.9003378550881337,
+  "best_params": null,
+  "target_columns": [
+    "temperature_2m",
+    "precipitation",
+    "wind_speed_10m",
+    "apparent_temperature",
+    "relative_humidity_2m"
+  ],
+  "log_transformed_precip": true,
+  "per_target": {
+    "temperature_2m": {
+      "rmse": 0.08025972638641642,
+      "mae": 0.0564644524337141,
+      "r2": 0.9935424342074678,
+      "mean_actual": 0.05805760974904634,
+      "std_actual": 0.9987648624220338,
+      "mean_pred": 0.057182013207058624,
+      "std_pred": 0.9914059967108177,
+      "log_transformed": false
+    },
+    "precipitation (log还原)": {
+      "rmse": 0.9942241747953423,
+      "mae": 0.22623536174250772,
+      "r2": 0.3391767638354065,
+      "mean_actual": 0.2697686225153475,
+      "std_actual": 1.2230428306478551,
+      "mean_pred": 0.19277727463997754,
+      "std_pred": 0.5620771317672753,
+      "log_transformed": true
+    },
+    "wind_speed_10m": {
+      "rmse": 0.3020157300281132,
+      "mae": 0.2158761685972262,
+      "r2": 0.9137735751275102,
+      "mean_actual": 0.004300743467907857,
+      "std_actual": 1.0285120239899972,
+      "mean_pred": 0.006676638269797541,
+      "std_pred": 0.9717278362281536,
+      "log_transformed": false
+    },
+    "apparent_temperature": {
+      "rmse": 0.08135226150573535,
+      "mae": 0.057773891344897396,
+      "r2": 0.9934059101833451,
+      "mean_actual": 0.06338958459418627,
+      "std_actual": 1.001825775429549,
+      "mean_pred": 0.0622881280814923,
+      "std_pred": 0.9939843766192489,
+      "log_transformed": false
+    },
+    "relative_humidity_2m": {
+      "rmse": 0.2105694940967554,
+      "mae": 0.14593484276720525,
+      "r2": 0.954210249660203,
+      "mean_actual": 0.041147763540574235,
+      "std_actual": 0.9840367453328477,
+      "mean_pred": 0.039056841506418964,
+      "std_pred": 0.9524844352934096,
+      "log_transformed": false
+    }
+  }
+}

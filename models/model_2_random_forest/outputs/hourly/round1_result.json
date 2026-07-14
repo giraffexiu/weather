@@ -1,0 +1,23 @@
+{
+  "round": 1,
+  "granularity": "hourly",
+  "method": "HalvingGridSearchCV (10% subsample) + 100-tree full train",
+  "params": {
+    "max_depth": null,
+    "max_features": "log2",
+    "min_samples_leaf": 4,
+    "n_estimators": 300
+  },
+  "n_estimators_actual": 100,
+  "cv_score": 0.31159864508324087,
+  "accuracy": 0.7111302678876401,
+  "macro_f1": 0.6524009215597628,
+  "weighted_f1": 0.7114164911437821,
+  "cohen_kappa": 0.6044237156518835,
+  "oob_score": 0.7280616902878011,
+  "log_loss": 0.7664657277556486,
+  "rain_recall": 0.5484315387876219,
+  "snow_recall": 0.7390438247011952,
+  "num_features": 62,
+  "elapsed_sec": 1000.0
+}

@@ -1,33 +1,21 @@
-# ==================== 数据文件（体积大，不入库） ====================
-# 原始采集数据
-data/dataset/**/*.csv
-data/dataset/**/progress_checkpoint.json
-
-# 清洗后的大文件
+# 天气数据集文件 - 文件太大，不提交到仓库
+dataset/*.csv
+data/*.csv
+data/progress_checkpoint.json
+# 清洗后的大文件（超过100MB）
 data/data_clean/cleaned_data/*.csv
 
-# 特征工程产出的 CSV（train/test features）
-data/data_engineer/**/processed_data/*.csv
-
-# 其他散落的 CSV
-data/**/*.csv
-
-# ==================== 模型产物 ====================
-# 预处理器与模型权重
-*.pkl
-*.pt
-*.pth
-*.joblib
-models/**/saved_models/
-models/**/outputs/
-models/**/logs/
-
-# ==================== 缓存 ====================
-data/data_engineer/daily_data/dataset_loader/cache/
+# 缓存文件和处理后的数据文件
 data/data_engineer/hourly_data/dataset_loader/cache/
-**/__pycache__/
-
-# ==================== Python ====================
+data/data_engineer/hourly_data/hourly_train/
+*.csv
+*.pkl
+data/data_engineer/daily_data/dataset_loader/cache/
+data/data_engineer/daily_data/processed_data/*.csv
+# Python相关
+#处理process_data文件生成的csv文件
+data/data_engineer/hourly_data/processed_data/*.csv
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -52,7 +40,7 @@ wheels/
 .installed.cfg
 *.egg
 
-# ==================== IDE ====================
+# IDE相关
 .vscode/
 .idea/
 *.swp
@@ -60,12 +48,14 @@ wheels/
 *~
 .DS_Store
 
-# ==================== Jupyter ====================
+# Jupyter Notebook
 .ipynb_checkpoints
 
-# ==================== 临时文件 ====================
+# 临时文件
 *.tmp
 *.log
 
-# ==================== 资源文件夹 ====================
+# 资源文件夹
 resource/
+#忽略node_modules
+node_modules/
